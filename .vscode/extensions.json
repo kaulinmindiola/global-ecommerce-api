@@ -1,0 +1,45 @@
+{
+  "recommendations": [
+    // === CORE GO DEVELOPMENT ===
+    "golang.go",                           // Soporte oficial de Go
+    
+    // === DOCKER & CONTAINERS ===
+    "ms-azuretools.vscode-docker",         // Docker support
+    "ms-vscode-remote.remote-containers",  // Dev Containers
+    
+    // === API DEVELOPMENT ===
+    "42crunch.vscode-openapi",             // OpenAPI/Swagger editor
+    "humao.rest-client",                   // Test APIs desde VSCode
+    "rangav.vscode-thunder-client",        // Alternative to Postman
+    
+    // === DATABASE ===
+    "mtxr.sqltools",                       // SQL query runner
+    "mtxr.sqltools-driver-pg",             // PostgreSQL driver
+    
+    // === GIT & VERSION CONTROL ===
+    "eamodio.gitlens",                     // Git superpowers
+    "mhutchie.git-graph",                  // Visualize Git history
+    
+    // === YAML & CONFIG FILES ===
+    "redhat.vscode-yaml",                  // YAML support
+    "tamasfe.even-better-toml",            // TOML support
+    
+    // === CODE QUALITY ===
+    "streetsidesoftware.code-spell-checker", // Spell checker
+    "editorconfig.editorconfig",           // EditorConfig support
+    
+    // === PRODUCTIVITY ===
+    "wayou.vscode-todo-highlight",         // Highlight TODOs
+    "aaron-bond.better-comments",          // Colorful comments
+    "usernamehw.errorlens",                // Inline error messages
+    
+    // === MARKDOWN (for README) ===
+    "yzhang.markdown-all-in-one",          // Markdown tools
+    "bierner.markdown-preview-github-styling" // GitHub-style preview
+  ],
+  
+  "unwantedRecommendations": [
+    "ms-vscode.csharp",                    // Evitar sugerencias de C#
+    "ms-python.python"                     // Evitar sugerencias de Python
+  ]
+}
