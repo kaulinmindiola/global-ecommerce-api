@@ -1,0 +1,135 @@
+# === BINARIES ===
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+build/
+
+# === GO ===
+# Compiled Object files
+*.o
+*.a
+*.so
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.txt
+coverage.html
+
+# Go workspace file
+go.work
+
+# Vendor directory (if using vendor mode)
+vendor/
+
+# === ENVIRONMENT & CONFIG ===
+.env
+.env.local
+.env.*.local
+*.local
+config.local.yaml
+
+# Keep example files
+!.env.example
+!config.example.yaml
+
+# === IDEs & EDITORS ===
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# GoLand / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# === OPERATING SYSTEMS ===
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+
+# Linux
+*~
+.directory
+
+# === LOGS ===
+*.log
+logs/
+*.log.*
+
+# === TEMPORARY FILES ===
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+*~
+
+# === DEPENDENCIES ===
+# Go module cache (usually global, but just in case)
+/go/pkg/mod/
+
+# === DATABASE ===
+*.db
+*.sqlite
+*.sqlite3
+data/
+pgdata/
+
+# === DOCKER ===
+# Ignore local docker volumes data
+.docker/
+docker-compose.override.yml
+
+# === TERRAFORM (if you add IaC later) ===
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# === CI/CD ===
+.github/workflows/*.local.yml
+
+# === DOCUMENTATION (generated) ===
+api/docs/*
+!api/docs/.gitkeep
+
+# === TEST ARTIFACTS ===
+*.test
+testdata/output/
+test-results/
+
+# === SECURITY ===
+# Never commit secrets
+*.pem
+*.key
+*.cert
+secrets/
+credentials/
+
+# === PROJECT SPECIFIC ===
+# Add any custom patterns here
+.air.toml.local
