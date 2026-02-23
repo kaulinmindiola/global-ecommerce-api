@@ -1,3 +1,3 @@
-module github.com/tuusuario/global-ecommerce-api
+module github.com/kaulinmindiola/global-ecommerce-api
 
 go 1.25.5
