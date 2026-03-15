@@ -1,78 +1,148 @@
+# ============================================================================
+# GLOBAL E-COMMERCE API - LOCAL DEVELOPMENT ENVIRONMENT
+# ============================================================================
+# This Docker Compose file provides:
+# - PostgreSQL 16 (primary database)
+# - Redis 7 (caching layer)
+# - Adminer (database management UI)
+#
+# Usage:
+#   Start:  docker-compose up -d
+#   Stop:   docker-compose down
+#   Logs:   docker-compose logs -f
+# ============================================================================
+
 version: '3.9'
 
 services:
-  # PostgreSQL Database
+  # ==========================================================================
+  # PostgreSQL - Primary Database
+  # ==========================================================================
   postgres:
     image: postgres:16-alpine
-    container_name: ecommerce-postgres
+    container_name: ecommerce_postgres
     restart: unless-stopped
+
     environment:
       POSTGRES_USER: ecommerce_user
-      POSTGRES_PASSWORD: ecommerce_pass_dev
+      POSTGRES_PASSWORD: ecommerce_password
       POSTGRES_DB: ecommerce_db
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
-      TZ: UTC
+      PGDATA: /var/lib/postgresql/data/pgdata
+
     ports:
       - "5432:5432"
+
     volumes:
+      # Persist database data
       - postgres_data:/var/lib/postgresql/data
-      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+      # Auto-execute schema on FIRST startup ONLY (not on restarts)
+      # NOTE: This only runs when the container is created for the first time
+      # If you need to recreate tables, use: make db-create
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ecommerce_user -d ecommerce_db"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - ecommerce-network
 
-  # Redis Cache
+    networks:
+      - ecommerce_network
+
+  # ==========================================================================
+  # Redis - Caching & Session Store
+  # ==========================================================================
   redis:
     image: redis:7-alpine
-    container_name: ecommerce-redis
+    container_name: ecommerce_redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass redis_pass_dev
+
+    command: redis-server --appendonly yes --requirepass redis_password
+
     ports:
       - "6379:6379"
+
     volumes:
       - redis_data:/data
+
     healthcheck:
       test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 5
-    networks:
-      - ecommerce-network
 
-  # pgAdmin (Opcional pero muy útil para visualizar la DB)
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: ecommerce-pgadmin
+    networks:
+      - ecommerce_network
+
+  # ==========================================================================
+  # Adminer - Database Management UI
+  # Access: http://localhost:8080
+  # System: PostgreSQL
+  # Server: postgres
+  # Username: ecommerce_user
+  # Password: ecommerce_password
+  # Database: ecommerce_db
+  # ==========================================================================
+  adminer:
+    image: adminer:latest
+    container_name: ecommerce_adminer
     restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@ecommerce.local
-      PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-    ports:
-      - "5050:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    depends_on:
-      - postgres
-    networks:
-      - ecommerce-network
-    profiles:
-      - tools  # Solo se levanta si ejecutas: docker-compose --profile tools up
 
-# Volumes persistentes (los datos sobreviven a reinicios)
+    ports:
+      - "8080:8080"
+
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: nette
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - ecommerce_network
+
+  # ==========================================================================
+  # API Service (will be added in Phase 2)
+  # Commented out until we build the Dockerfile
+  # ==========================================================================
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: deployments/docker/Dockerfile
+  #   container_name: ecommerce_api
+  #   restart: unless-stopped
+  #
+  #   ports:
+  #     - "8000:8000"
+  #
+  #   environment:
+  #     DATABASE_URL: postgresql://ecommerce_user:ecommerce_password@postgres:5432/ecommerce_db
+  #     REDIS_URL: redis://:redis_password@redis:6379/0
+  #     APP_ENV: development
+  #
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #
+  #   networks:
+  #     - ecommerce_network
+
+# ==========================================================================
+# Networks
+# ==========================================================================
+networks:
+  ecommerce_network:
+    driver: bridge
+    name: ecommerce_network
+
+# ==========================================================================
+# Volumes (persist data across container restarts)
+# ==========================================================================
 volumes:
   postgres_data:
-    driver: local
+    name: ecommerce_postgres_data
   redis_data:
-    driver: local
-  pgadmin_data:
-    driver: local
-
-# Red interna para que los servicios se comuniquen
-networks:
-  ecommerce-network:
-    driver: bridge
+    name: ecommerce_redis_data

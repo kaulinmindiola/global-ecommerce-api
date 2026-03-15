@@ -1,142 +1,188 @@
+# ============================================================================
+# GLOBAL E-COMMERCE API - MAKEFILE
+# ============================================================================
+# Professional build automation for development workflow
+#
+# Usage:
+#   make help          Show this help message
+#   make setup         Initial project setup
+#   make dev           Start development environment
+#   make test          Run all tests
+#   make build         Build production binary
+# ============================================================================
+
+.PHONY: help setup dev stop test build clean lint format migrate-up migrate-down docker-build docker-up docker-down
+
+# Default target
+.DEFAULT_GOAL := help
+
 # Variables
-DOCKER_COMPOSE = docker-compose
-GO_CMD = go
-BINARY_NAME = ecommerce-api
-MAIN_PATH = ./cmd/api
+APP_NAME := global-ecommerce-api
+BINARY_NAME := ecommerce-api
+DOCKER_IMAGE := $(APP_NAME):latest
+GO_FILES := $(shell find . -type f -name '*.go' -not -path "./vendor/*")
 
 # Colors for output
-CYAN = \033[0;36m
-GREEN = \033[0;32m
-YELLOW = \033[1;33m
-NC = \033[0m # No Color
+COLOR_RESET := \033[0m
+COLOR_BOLD := \033[1m
+COLOR_GREEN := \033[32m
+COLOR_YELLOW := \033[33m
+COLOR_BLUE := \033[34m
 
-.PHONY: help
-help: ## Show this help message
-	@echo '$(CYAN)Available commands:$(NC)'
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
+## help: Display this help message
+help:
+	@echo "$(COLOR_BOLD)$(COLOR_BLUE)Global E-commerce API - Available Commands$(COLOR_RESET)"
+	@echo ""
+	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' | sed -e 's/^/ /'
+	@echo ""
 
-# ==================================================================================== #
-# DOCKER COMMANDS
-# ==================================================================================== #
+## setup: Initial project setup (run once)
+setup:
+	@echo "$(COLOR_GREEN)Setting up project...$(COLOR_RESET)"
+	@echo "Creating .env file from template..."
+	@cp -n .env.example .env || true
+	@echo "Installing Go dependencies..."
+	@go mod download
+	@go mod tidy
+	@echo "Installing development tools..."
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@go install github.com/swaggo/swag/cmd/swag@latest
+	@echo "Creating required directories..."
+	@mkdir -p bin logs
+	@echo "$(COLOR_GREEN)✓ Setup complete!$(COLOR_RESET)"
 
-.PHONY: docker-up
-docker-up: ## Start all Docker containers
-	@echo "$(CYAN)Starting Docker containers...$(NC)"
-	$(DOCKER_COMPOSE) up -d
-	@echo "$(GREEN)✓ Containers started successfully$(NC)"
-	@echo "$(YELLOW)PostgreSQL:$(NC) localhost:5432"
-	@echo "$(YELLOW)Redis:$(NC)      localhost:6379"
+## dev: Start development environment (Docker + hot-reload)
+dev:
+	@echo "$(COLOR_GREEN)Starting development environment...$(COLOR_RESET)"
+	@docker-compose up -d
+	@echo "$(COLOR_GREEN)✓ Services started!$(COLOR_RESET)"
+	@echo "$(COLOR_YELLOW)Database UI: http://localhost:8080$(COLOR_RESET)"
+	@echo "$(COLOR_YELLOW)PostgreSQL: localhost:5432$(COLOR_RESET)"
+	@echo "$(COLOR_YELLOW)Redis: localhost:6379$(COLOR_RESET)"
 
-.PHONY: docker-up-tools
-docker-up-tools: ## Start containers with pgAdmin
-	@echo "$(CYAN)Starting Docker containers with tools...$(NC)"
-	$(DOCKER_COMPOSE) --profile tools up -d
-	@echo "$(GREEN)✓ Containers started successfully$(NC)"
-	@echo "$(YELLOW)PostgreSQL:$(NC) localhost:5432"
-	@echo "$(YELLOW)Redis:$(NC)      localhost:6379"
-	@echo "$(YELLOW)pgAdmin:$(NC)    http://localhost:5050"
+## stop: Stop development environment
+stop:
+	@echo "$(COLOR_YELLOW)Stopping development environment...$(COLOR_RESET)"
+	@docker-compose down
+	@echo "$(COLOR_GREEN)✓ Services stopped$(COLOR_RESET)"
 
-.PHONY: docker-down
-docker-down: ## Stop all Docker containers
-	@echo "$(CYAN)Stopping Docker containers...$(NC)"
-	$(DOCKER_COMPOSE) down
-	@echo "$(GREEN)✓ Containers stopped$(NC)"
+## build: Build production binary
+build:
+	@echo "$(COLOR_GREEN)Building production binary...$(COLOR_RESET)"
+	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+		-ldflags="-w -s -X main.Version=$(shell git describe --tags --always --dirty)" \
+		-o bin/$(BINARY_NAME) \
+		./cmd/api
+	@echo "$(COLOR_GREEN)✓ Binary created: bin/$(BINARY_NAME)$(COLOR_RESET)"
 
-.PHONY: docker-logs
-docker-logs: ## Show Docker logs
-	$(DOCKER_COMPOSE) logs -f
+## run: Run API locally (without Docker)
+run:
+	@echo "$(COLOR_GREEN)Running API server...$(COLOR_RESET)"
+	@go run cmd/api/main.go
 
-.PHONY: docker-clean
-docker-clean: ## Remove all containers, volumes, and networks
-	@echo "$(YELLOW)⚠ This will delete all data!$(NC)"
-	@read -p "Are you sure? [y/N] " -n 1 -r; \
-	echo; \
-	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
-		$(DOCKER_COMPOSE) down -v --remove-orphans; \
-		echo "$(GREEN)✓ Cleanup complete$(NC)"; \
-	fi
+## test: Run all tests with coverage
+test:
+	@echo "$(COLOR_GREEN)Running tests...$(COLOR_RESET)"
+	@go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+	@echo "$(COLOR_GREEN)✓ Tests complete$(COLOR_RESET)"
+	@echo "$(COLOR_YELLOW)Coverage report: coverage.txt$(COLOR_RESET)"
 
-.PHONY: docker-restart
-docker-restart: docker-down docker-up ## Restart all containers
+## test-coverage: Run tests and display coverage in browser
+test-coverage: test
+	@go tool cover -html=coverage.txt
 
-.PHONY: docker-ps
-docker-ps: ## Show running containers
-	$(DOCKER_COMPOSE) ps
+## lint: Run linter (golangci-lint)
+lint:
+	@echo "$(COLOR_GREEN)Running linter...$(COLOR_RESET)"
+	@golangci-lint run --timeout=5m ./...
+	@echo "$(COLOR_GREEN)✓ Linting complete$(COLOR_RESET)"
 
-# ==================================================================================== #
-# DATABASE COMMANDS
-# ==================================================================================== #
+## format: Format Go code
+format:
+	@echo "$(COLOR_GREEN)Formatting code...$(COLOR_RESET)"
+	@gofmt -s -w $(GO_FILES)
+	@goimports -w $(GO_FILES)
+	@echo "$(COLOR_GREEN)✓ Code formatted$(COLOR_RESET)"
 
-.PHONY: db-connect
-db-connect: ## Connect to PostgreSQL via psql
-	@echo "$(CYAN)Connecting to PostgreSQL...$(NC)"
-	docker exec -it ecommerce-postgres psql -U ecommerce_user -d ecommerce_db
+## migrate-up: Run database migrations (up)
+migrate-up:
+	@echo "$(COLOR_GREEN)Running database migrations...$(COLOR_RESET)"
+	@docker exec -i ecommerce_postgres psql -U ecommerce_user -d ecommerce_db < database/schema.sql
+	@echo "$(COLOR_GREEN)✓ Migrations applied$(COLOR_RESET)"
 
-.PHONY: db-migrate-up
-db-migrate-up: ## Run database migrations (placeholder for now)
-	@echo "$(YELLOW)Migration tools will be configured in Phase 2$(NC)"
+## db-create: Create database tables from schema
+db-create:
+	@echo "$(COLOR_GREEN)Creating database tables...$(COLOR_RESET)"
+ifeq ($(OS),Windows_NT)
+	@type database\schema.sql | docker exec -i ecommerce_postgres psql -U ecommerce_user -d ecommerce_db
+else
+	@docker exec -i ecommerce_postgres psql -U ecommerce_user -d ecommerce_db < database/schema.sql
+endif
+	@echo "$(COLOR_GREEN)✓ Database tables created$(COLOR_RESET)"
+	@echo "$(COLOR_YELLOW)Verifying tables...$(COLOR_RESET)"
+	@docker exec ecommerce_postgres psql -U ecommerce_user -d ecommerce_db -c "\dt"
 
-.PHONY: db-seed
-db-seed: ## Seed database with test data (placeholder)
-	@echo "$(YELLOW)Seeding tools will be configured in Phase 3$(NC)"
+## migrate-down: Rollback database migrations (down)
+migrate-down:
+	@echo "$(COLOR_YELLOW)Rolling back migrations...$(COLOR_RESET)"
+	@echo "Manual rollback required - check database/migrations/*.down.sql"
 
-# ==================================================================================== #
-# GO COMMANDS
-# ==================================================================================== #
+## seed: Seed database with test data
+seed:
+	@echo "$(COLOR_GREEN)Seeding database...$(COLOR_RESET)"
+	@docker-compose exec postgres psql -U ecommerce_user -d ecommerce_db -c "\
+		INSERT INTO currencies (code, name, symbol, decimal_places) VALUES \
+		('USD', 'US Dollar', '\$$', 2), \
+		('EUR', 'Euro', '€', 2), \
+		('COP', 'Colombian Peso', '\$$', 2) \
+		ON CONFLICT DO NOTHING;"
+	@echo "$(COLOR_GREEN)✓ Database seeded$(COLOR_RESET)"
 
-.PHONY: run
-run: ## Run the application
-	$(GO_CMD) run $(MAIN_PATH)/main.go
+## clean: Remove build artifacts and caches
+clean:
+	@echo "$(COLOR_YELLOW)Cleaning build artifacts...$(COLOR_RESET)"
+	@rm -rf bin/
+	@rm -rf dist/
+	@rm -f coverage.txt
+	@go clean -cache -testcache -modcache
+	@echo "$(COLOR_GREEN)✓ Clean complete$(COLOR_RESET)"
 
-.PHONY: build
-build: ## Build the application
-	@echo "$(CYAN)Building application...$(NC)"
-	$(GO_CMD) build -o bin/$(BINARY_NAME) $(MAIN_PATH)/main.go
-	@echo "$(GREEN)✓ Build complete: bin/$(BINARY_NAME)$(NC)"
+## docker-build: Build Docker image
+docker-build:
+	@echo "$(COLOR_GREEN)Building Docker image...$(COLOR_RESET)"
+	@docker build -t $(DOCKER_IMAGE) -f deployments/docker/Dockerfile .
+	@echo "$(COLOR_GREEN)✓ Image built: $(DOCKER_IMAGE)$(COLOR_RESET)"
 
-.PHONY: test
-test: ## Run all tests
-	$(GO_CMD) test -v -race -coverprofile=coverage.out ./...
+## docker-up: Start all services with Docker Compose
+docker-up:
+	@docker-compose up -d --build
 
-.PHONY: test-coverage
-test-coverage: test ## Run tests and show coverage
-	$(GO_CMD) tool cover -html=coverage.out
+## docker-down: Stop and remove all Docker containers
+docker-down:
+	@docker-compose down -v
 
-.PHONY: lint
-lint: ## Run linter
-	golangci-lint run --fix
+## docker-logs: View logs from all containers
+docker-logs:
+	@docker-compose logs -f
 
-.PHONY: fmt
-fmt: ## Format Go code
-	$(GO_CMD) fmt ./...
-	goimports -w .
+## deps: Download and tidy Go dependencies
+deps:
+	@echo "$(COLOR_GREEN)Updating dependencies...$(COLOR_RESET)"
+	@go mod download
+	@go mod tidy
+	@go mod verify
+	@echo "$(COLOR_GREEN)✓ Dependencies updated$(COLOR_RESET)"
 
-# ==================================================================================== #
-# DEVELOPMENT COMMANDS
-# ==================================================================================== #
+## swagger: Generate Swagger documentation
+swagger:
+	@echo "$(COLOR_GREEN)Generating Swagger docs...$(COLOR_RESET)"
+	@swag init -g cmd/api/main.go -o api/docs
+	@echo "$(COLOR_GREEN)✓ Swagger docs generated$(COLOR_RESET)"
 
-.PHONY: dev
-dev: docker-up ## Start development environment
-	@echo "$(GREEN)✓ Development environment ready!$(NC)"
-	@echo "$(YELLOW)Run 'make run' to start the API$(NC)"
+## db-shell: Open PostgreSQL shell
+db-shell:
+	@docker-compose exec postgres psql -U ecommerce_user -d ecommerce_db
 
-.PHONY: setup
-setup: ## Initial project setup
-	@echo "$(CYAN)Setting up project...$(NC)"
-	cp -n .env.example .env || true
-	$(GO_CMD) mod download
-	$(GO_CMD) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	@echo "$(GREEN)✓ Setup complete!$(NC)"
-	@echo "$(YELLOW)Run 'make dev' to start development$(NC)"
-
-.PHONY: clean
-clean: ## Clean build artifacts
-	rm -rf bin/
-	rm -f coverage.out
-	$(GO_CMD) clean
-
-# ==================================================================================== #
-# DEFAULT TARGET
-# ==================================================================================== #
-
-.DEFAULT_GOAL := help
+## redis-shell: Open Redis CLI
+redis-shell:
+	@docker-compose exec redis redis-cli -a redis_password

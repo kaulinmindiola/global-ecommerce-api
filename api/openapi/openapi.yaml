@@ -1,0 +1,1538 @@
+openapi: 3.0.3
+
+info:
+  title: Global E-commerce Microservices API
+  description: |
+    A production-grade RESTful API for international e-commerce platforms with multi-currency support and timezone-aware operations.
+
+    ## Key Features
+    - Multi-currency pricing with real-time conversion
+    - Timezone-aware operations (UTC-based)
+    - JWT authentication
+    - Redis caching layer
+    - Clean Architecture implementation
+
+    ## Architecture
+    This API follows Clean Architecture principles with clear separation of concerns:
+    - Domain Layer: Core business entities
+    - Application Layer: Business logic and use cases
+    - Infrastructure Layer: Database, cache, and HTTP
+
+    ## Authentication
+    Most endpoints require JWT Bearer token authentication. Obtain a token via `/auth/login` or `/auth/register`.
+
+  version: 1.0.0
+  contact:
+    name: Kaulin Mindiola
+    email: kaulin@example.com
+    url: https://github.com/kaulinmindiola/global-ecommerce-api
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development server
+  - url: https://api.ecommerce.example.com/api/v1
+    description: Production server (future)
+
+tags:
+  - name: Health
+    description: System health and version information
+  - name: Authentication
+    description: User authentication and authorization
+  - name: Users
+    description: User profile management
+  - name: Currencies
+    description: Currency management and conversion
+  - name: Products
+    description: Product catalog management
+  - name: Orders
+    description: Order creation and management
+
+paths:
+  # ============================================================================
+  # HEALTH & SYSTEM ENDPOINTS
+  # ============================================================================
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Check if the API and its dependencies (database, cache) are operational
+      operationId: getHealth
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: System is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /version:
+    get:
+      tags:
+        - Health
+      summary: Get API version
+      description: Returns API version information and build details
+      operationId: getVersion
+      responses:
+        '200':
+          description: Version information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
+
+  # ============================================================================
+  # AUTHENTICATION ENDPOINTS
+  # ============================================================================
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      description: Create a new user account with email and password
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and receive JWT token
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: Get a new access token using refresh token
+      operationId: refreshToken
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout user
+      description: Invalidate current access token
+      operationId: logoutUser
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Logout successful
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================================
+  # USERS ENDPOINTS
+  # ============================================================================
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: Get current user profile
+      description: Retrieve authenticated user's profile information
+      operationId: getCurrentUser
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Users
+      summary: Update user profile
+      description: Update authenticated user's profile information
+      operationId: updateCurrentUser
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Users
+      summary: Delete user account
+      description: Permanently delete authenticated user's account
+      operationId: deleteCurrentUser
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Account deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me/preferences:
+    put:
+      tags:
+        - Users
+      summary: Update user preferences
+      description: Update currency and timezone preferences
+      operationId: updateUserPreferences
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePreferencesRequest'
+      responses:
+        '200':
+          description: Preferences updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================================
+  # CURRENCIES ENDPOINTS
+  # ============================================================================
+  /currencies:
+    get:
+      tags:
+        - Currencies
+      summary: List all currencies
+      description: Get list of all supported currencies
+      operationId: listCurrencies
+      responses:
+        '200':
+          description: List of currencies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyListResponse'
+
+  /currencies/{code}:
+    get:
+      tags:
+        - Currencies
+      summary: Get currency details
+      description: Get details of a specific currency by ISO code
+      operationId: getCurrency
+      parameters:
+        - name: code
+          in: path
+          required: true
+          description: ISO 4217 currency code (e.g., USD, EUR)
+          schema:
+            type: string
+            pattern: '^[A-Z]{3}$'
+            example: USD
+      responses:
+        '200':
+          description: Currency details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Currency'
+        '404':
+          description: Currency not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /currencies/convert:
+    get:
+      tags:
+        - Currencies
+      summary: Convert currency amount
+      description: Convert amount between two currencies using current exchange rate
+      operationId: convertCurrency
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: Source currency code
+          schema:
+            type: string
+            pattern: '^[A-Z]{3}$'
+            example: USD
+        - name: to
+          in: query
+          required: true
+          description: Target currency code
+          schema:
+            type: string
+            pattern: '^[A-Z]{3}$'
+            example: EUR
+        - name: amount
+          in: query
+          required: true
+          description: Amount to convert
+          schema:
+            type: number
+            format: double
+            minimum: 0.01
+            example: 100.00
+      responses:
+        '200':
+          description: Conversion result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversionResponse'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Currency not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /currencies/rates:
+    get:
+      tags:
+        - Currencies
+      summary: Get exchange rates
+      description: Get current exchange rates for all currency pairs
+      operationId: getExchangeRates
+      responses:
+        '200':
+          description: Exchange rates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExchangeRatesResponse'
+
+  # ============================================================================
+  # PRODUCTS ENDPOINTS
+  # ============================================================================
+  /products:
+    get:
+      tags:
+        - Products
+      summary: List products
+      description: Get paginated list of products with optional filtering
+      operationId: listProducts
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/SortParam'
+        - $ref: '#/components/parameters/OrderParam'
+        - name: currency
+          in: query
+          description: Display prices in this currency
+          schema:
+            type: string
+            default: USD
+            example: EUR
+        - name: min_price
+          in: query
+          description: Minimum price filter
+          schema:
+            type: number
+            format: double
+            minimum: 0
+        - name: max_price
+          in: query
+          description: Maximum price filter
+          schema:
+            type: number
+            format: double
+            minimum: 0
+        - name: in_stock
+          in: query
+          description: Filter by stock availability
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of products
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductListResponse'
+
+    post:
+      tags:
+        - Products
+      summary: Create product (Admin)
+      description: Create a new product (requires admin role)
+      operationId: createProduct
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductRequest'
+      responses:
+        '201':
+          description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (admin only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /products/{id}:
+    get:
+      tags:
+        - Products
+      summary: Get product details
+      description: Get detailed information about a specific product
+      operationId: getProduct
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Product UUID
+          schema:
+            type: string
+            format: uuid
+        - name: currency
+          in: query
+          description: Display price in this currency
+          schema:
+            type: string
+            default: USD
+      responses:
+        '200':
+          description: Product details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Products
+      summary: Update product (Admin)
+      description: Update an existing product (requires admin role)
+      operationId: updateProduct
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Product UUID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProductRequest'
+      responses:
+        '200':
+          description: Product updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (admin only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Products
+      summary: Delete product (Admin)
+      description: Delete a product (requires admin role)
+      operationId: deleteProduct
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Product UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Product deleted
+        '403':
+          description: Forbidden (admin only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /products/search:
+    get:
+      tags:
+        - Products
+      summary: Search products
+      description: Search products by name or description
+      operationId: searchProducts
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query
+          schema:
+            type: string
+            minLength: 2
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductListResponse'
+
+  # ============================================================================
+  # ORDERS ENDPOINTS
+  # ============================================================================
+  /orders:
+    get:
+      tags:
+        - Orders
+      summary: List user orders
+      description: Get paginated list of authenticated user's orders
+      operationId: listOrders
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          description: Filter by order status
+          schema:
+            type: string
+            enum: [pending, confirmed, shipped, delivered, cancelled]
+        - name: from_date
+          in: query
+          description: Filter orders from this date
+          schema:
+            type: string
+            format: date-time
+        - name: to_date
+          in: query
+          description: Filter orders until this date
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - Orders
+      summary: Create order
+      description: Create a new order with multi-currency support
+      operationId: createOrder
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Business logic error (e.g., insufficient stock)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orders/{id}:
+    get:
+      tags:
+        - Orders
+      summary: Get order details
+      description: Get detailed information about a specific order
+      operationId: getOrder
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Order UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orders/{id}/cancel:
+    put:
+      tags:
+        - Orders
+      summary: Cancel order
+      description: Cancel an order (only if status is pending or confirmed)
+      operationId: cancelOrder
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Order UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Cannot cancel order in current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orders/{id}/invoice:
+    get:
+      tags:
+        - Orders
+      summary: Get order invoice
+      description: Get invoice details for an order
+      operationId: getOrderInvoice
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Order UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order invoice
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+# ==============================================================================
+# COMPONENTS
+# ==============================================================================
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /auth/login or /auth/register
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: Page number
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    LimitParam:
+      name: limit
+      in: query
+      description: Items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    SortParam:
+      name: sort
+      in: query
+      description: Sort field
+      schema:
+        type: string
+        default: created_at
+
+    OrderParam:
+      name: order
+      in: query
+      description: Sort order
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+
+  schemas:
+    # ========================================================================
+    # COMMON SCHEMAS
+    # ========================================================================
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - timestamp
+            - path
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              description: Human-readable error message
+              example: Validation failed
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+                  code:
+                    type: string
+            timestamp:
+              type: string
+              format: date-time
+            path:
+              type: string
+              example: /api/v1/auth/register
+            request_id:
+              type: string
+              example: req_abc123xyz
+
+    Pagination:
+      type: object
+      required:
+        - page
+        - limit
+        - total
+        - total_pages
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+        total_pages:
+          type: integer
+          minimum: 0
+
+    # ========================================================================
+    # HEALTH SCHEMAS
+    # ========================================================================
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - version
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        services:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [up, down]
+            redis:
+              type: string
+              enum: [up, down]
+        version:
+          type: string
+
+    VersionResponse:
+      type: object
+      required:
+        - version
+        - build_date
+        - go_version
+      properties:
+        version:
+          type: string
+          example: 1.0.0
+        build_date:
+          type: string
+          format: date-time
+        go_version:
+          type: string
+          example: 1.22.0
+        commit_hash:
+          type: string
+          example: a1b2c3d
+
+    # ========================================================================
+    # AUTHENTICATION SCHEMAS
+    # ========================================================================
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - full_name
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: Must contain uppercase, lowercase, number, and special character
+        full_name:
+          type: string
+          minLength: 2
+          maxLength: 255
+        preferred_currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          default: USD
+        preferred_timezone:
+          type: string
+          default: UTC
+          example: America/Bogota
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    AuthResponse:
+      type: object
+      required:
+        - user
+        - token
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        token:
+          type: object
+          required:
+            - access_token
+            - token_type
+            - expires_in
+          properties:
+            access_token:
+              type: string
+              description: JWT access token
+            token_type:
+              type: string
+              default: Bearer
+            expires_in:
+              type: integer
+              description: Token expiration time in seconds
+              example: 86400
+
+    TokenResponse:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: object
+          required:
+            - access_token
+            - token_type
+            - expires_in
+          properties:
+            access_token:
+              type: string
+            token_type:
+              type: string
+              default: Bearer
+            expires_in:
+              type: integer
+
+    # ========================================================================
+    # USER SCHEMAS
+    # ========================================================================
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - full_name
+        - preferred_currency
+        - preferred_timezone
+        - is_active
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        preferred_currency:
+          type: string
+        preferred_timezone:
+          type: string
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        full_name:
+          type: string
+          minLength: 2
+          maxLength: 255
+        preferred_currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        preferred_timezone:
+          type: string
+
+    UpdatePreferencesRequest:
+      type: object
+      properties:
+        preferred_currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        preferred_timezone:
+          type: string
+
+    # ========================================================================
+    # CURRENCY SCHEMAS
+    # ========================================================================
+    Currency:
+      type: object
+      required:
+        - id
+        - code
+        - name
+        - symbol
+        - decimal_places
+        - is_active
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          example: USD
+        name:
+          type: string
+          example: US Dollar
+        symbol:
+          type: string
+          example: $
+        decimal_places:
+          type: integer
+          minimum: 0
+          maximum: 4
+          example: 2
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CurrencyListResponse:
+      type: object
+      required:
+        - data
+        - total
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Currency'
+        total:
+          type: integer
+
+    ConversionResponse:
+      type: object
+      required:
+        - from_currency
+        - to_currency
+        - amount
+        - converted_amount
+        - exchange_rate
+        - timestamp
+      properties:
+        from_currency:
+          type: string
+        to_currency:
+          type: string
+        amount:
+          type: number
+          format: double
+        converted_amount:
+          type: number
+          format: double
+        exchange_rate:
+          type: number
+          format: double
+        rate_date:
+          type: string
+          format: date
+        timestamp:
+          type: string
+          format: date-time
+
+    ExchangeRatesResponse:
+      type: object
+      properties:
+        base_currency:
+          type: string
+          default: USD
+        rates:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+        timestamp:
+          type: string
+          format: date-time
+
+    # ========================================================================
+    # PRODUCT SCHEMAS
+    # ========================================================================
+    Product:
+      type: object
+      required:
+        - id
+        - name
+        - sku
+        - price
+        - stock_quantity
+        - is_active
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        sku:
+          type: string
+        price:
+          type: object
+          required:
+            - amount
+            - currency
+          properties:
+            amount:
+              type: number
+              format: double
+            currency:
+              type: string
+            base_amount:
+              type: number
+              format: double
+            base_currency:
+              type: string
+            exchange_rate:
+              type: number
+              format: double
+        stock_quantity:
+          type: integer
+          minimum: 0
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateProductRequest:
+      type: object
+      required:
+        - name
+        - sku
+        - base_price
+        - base_currency
+        - stock_quantity
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 255
+        description:
+          type: string
+        sku:
+          type: string
+          pattern: '^[A-Z0-9-]+$'
+        base_price:
+          type: number
+          format: double
+          minimum: 0.01
+        base_currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        stock_quantity:
+          type: integer
+          minimum: 0
+
+    UpdateProductRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        base_price:
+          type: number
+          format: double
+          minimum: 0.01
+        stock_quantity:
+          type: integer
+          minimum: 0
+        is_active:
+          type: boolean
+
+    ProductListResponse:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    # ========================================================================
+    # ORDER SCHEMAS
+    # ========================================================================
+    Order:
+      type: object
+      required:
+        - id
+        - order_number
+        - user_id
+        - currency
+        - exchange_rate
+        - items
+        - subtotal
+        - tax_amount
+        - shipping_cost
+        - total_amount
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_number:
+          type: string
+          example: ORD-2025-000123
+        user_id:
+          type: string
+          format: uuid
+        currency:
+          type: string
+        exchange_rate:
+          type: number
+          format: double
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        subtotal:
+          type: number
+          format: double
+        tax_amount:
+          type: number
+          format: double
+        shipping_cost:
+          type: number
+          format: double
+        total_amount:
+          type: number
+          format: double
+        status:
+          type: string
+          enum: [pending, confirmed, shipped, delivered, cancelled]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        confirmed_at:
+          type: string
+          format: date-time
+        cancelled_at:
+          type: string
+          format: date-time
+
+    OrderItem:
+      type: object
+      required:
+        - id
+        - product_id
+        - product_name
+        - product_sku
+        - quantity
+        - unit_price
+        - subtotal
+      properties:
+        id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        product_name:
+          type: string
+        product_sku:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        unit_price:
+          type: number
+          format: double
+        subtotal:
+          type: number
+          format: double
+
+    CreateOrderRequest:
+      type: object
+      required:
+        - currency
+        - items
+      properties:
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - product_id
+              - quantity
+            properties:
+              product_id:
+                type: string
+                format: uuid
+              quantity:
+                type: integer
+                minimum: 1
+                maximum: 9999
+        shipping_address:
+          type: object
+          properties:
+            street:
+              type: string
+            city:
+              type: string
+            state:
+              type: string
+            country:
+              type: string
+            postal_code:
+              type: string
+
+    OrderListResponse:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              order_number:
+                type: string
+              total_amount:
+                type: number
+                format: double
+              currency:
+                type: string
+              status:
+                type: string
+              items_count:
+                type: integer
+              created_at:
+                type: string
+                format: date-time
+        pagination:
+          $ref: '#/components/schemas/Pagination'

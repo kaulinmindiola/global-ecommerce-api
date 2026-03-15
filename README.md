@@ -151,7 +151,7 @@ Ensure you have the following installed:
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/global-ecommerce-api.git
+   git clone https://github.com/kaulinmindiola/global-ecommerce-api.git
    cd global-ecommerce-api
    ```
 
@@ -589,7 +589,7 @@ Internet → Load Balancer → API Instances → RDS (PostgreSQL)
 
 Contributions are welcome! Please follow these guidelines:
 
-1. **Fork the repository**
+1. **Fork the repository**F
 2. **Create a feature branch** (`git checkout -b feature/amazing-feature`)
 3. **Write tests** for new functionality
 4. **Follow Go conventions** and run `make lint`
@@ -617,7 +617,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 - GitHub: [@kaulinmindiola](https://github.com/kaulinmindiola)
 - LinkedIn: [Kaulin Mindiola](https://linkedin.com/in/kaulinmindiola)
-- Email: kaulin@example.com
+- Email: kaulinmindiola@gmail.com
 
 ---
 
