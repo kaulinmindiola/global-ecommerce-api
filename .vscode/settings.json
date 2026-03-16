@@ -1,5 +1,4 @@
 {
-  // === GO CONFIGURATION ===
   "go.toolsManagement.autoUpdate": true,
   "go.useLanguageServer": true,
   "go.lintTool": "golangci-lint",
@@ -7,11 +6,8 @@
   "go.vetOnSave": "workspace",
   "go.formatTool": "goimports",
   "go.lintFlags": [
-    "--fast",
-    "--enable=gofmt,golint,govet,errcheck,staticcheck,unused,gosimple,structcheck,varcheck,ineffassign,deadcode"
+    "--fast"
   ],
-  
-  // === TESTING ===
   "go.testFlags": ["-v", "-race", "-count=1"],
   "go.testTimeout": "30s",
   "go.coverOnSave": true,
@@ -20,35 +16,26 @@
     "coveredHighlightColor": "rgba(64,128,64,0.5)",
     "uncoveredHighlightColor": "rgba(128,64,64,0.5)"
   },
-  
-  // === AUTO-FORMATTING ===
   "editor.formatOnSave": true,
   "editor.formatOnPaste": true,
   "editor.codeActionsOnSave": {
     "source.organizeImports": "explicit",
     "source.fixAll": "explicit"
   },
-  
-  // === GO SPECIFIC FORMATTING ===
   "[go]": {
     "editor.defaultFormatter": "golang.go",
     "editor.formatOnSave": true,
     "editor.insertSpaces": false,
     "editor.tabSize": 4
   },
-  
-  // === YAML/DOCKER ===
   "[yaml]": {
     "editor.defaultFormatter": "redhat.vscode-yaml",
     "editor.insertSpaces": true,
     "editor.tabSize": 2
   },
-  
   "[dockerfile]": {
     "editor.defaultFormatter": "ms-azuretools.vscode-docker"
   },
-  
-  // === FILES & FOLDERS ===
   "files.exclude": {
     "**/.git": true,
     "**/.DS_Store": true,
@@ -56,39 +43,34 @@
     "**/*.exe": true,
     "**/*.test": true
   },
-  
   "files.watcherExclude": {
     "**/.git/objects/**": true,
     "**/vendor/**": true,
     "**/node_modules/**": true
   },
-  
-  // === TERMINAL ===
   "terminal.integrated.defaultProfile.windows": "Git Bash",
   "terminal.integrated.env.windows": {
     "GOPATH": "${env:USERPROFILE}\\go"
   },
-  
-  // === GIT ===
   "git.autofetch": true,
   "git.confirmSync": false,
   "git.enableSmartCommit": true,
-  
-  // === EDITOR ENHANCEMENTS ===
   "editor.rulers": [80, 120],
   "editor.renderWhitespace": "boundary",
   "editor.suggestSelection": "first",
   "editor.bracketPairColorization.enabled": true,
   "editor.guides.bracketPairs": true,
-  
-  // === SPECIFIC TO YOUR PROJECT ===
   "go.gopath": "${workspaceFolder}/.go",
   "go.inferGopath": false,
   "go.buildTags": "integration",
-  
-  // === SECURITY ===
   "files.associations": {
     "*.env.example": "dotenv",
     ".env.local": "dotenv"
+  },
+  "yaml.schemas": {
+    "https://golangci-lint.run/jsonschema/golangci.jsonschema.json": [
+      ".golangci.yml",
+      ".golangci.yaml"
+    ]
   }
 }
