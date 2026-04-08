@@ -1,3 +1,6 @@
+# yaml-language-server: $schema=https://golangci-lint.run/jsonschema/golangci.jsonschema.json
+
+# 1. La versión es OBLIGATORIA para el validador de VS Code
 version: "2"
 
 run:
@@ -5,15 +8,14 @@ run:
   tests: true
 
 linters:
+  # 2. 'disable-all' debe ir dentro de 'linters' y antes de 'enable'
+  disable-all: false
   enable:
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
     - unused
-    - gofmt
-    - goimports
     - misspell
     - revive
     - gosec
@@ -23,16 +25,16 @@ linters:
     - bodyclose
     - gocritic
     - nolintlint
-    - stylecheck
-    - typecheck
     - unparam
 
-settings:
+# 3. 'linters-settings' ahora será reconocido al estar bien definido lo anterior
+linters-settings:
   errcheck:
     check-type-assertions: true
 
   goimports:
-    local-prefixes: github.com/kaulinmindiola/global-ecommerce-api
+    # Recuerda los corchetes [] para que sea un array
+    local-prefixes: ["github.com/kaulinmindiola/global-ecommerce-api"]
 
   revive:
     rules:
