@@ -3,13 +3,17 @@ package domain
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
 func TestNewOrderItem_Success(t *testing.T) {
+	orderID := uuid.New()
+	productID := uuid.New()
+
 	item, err := NewOrderItem(
-		"order123",
-		"prod123",
+		orderID,
+		productID,
 		"Wireless Headphones",
 		"AUDIO-WH-001",
 		decimal.NewFromFloat(99.99),
@@ -20,12 +24,12 @@ func TestNewOrderItem_Success(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if item.OrderID != "order123" {
-		t.Errorf("expected order ID 'order123', got '%s'", item.OrderID)
+	if item.OrderID != orderID {
+		t.Errorf("expected order ID '%s', got '%s'", orderID, item.OrderID)
 	}
 
-	if item.ProductID != "prod123" {
-		t.Errorf("expected product ID 'prod123', got '%s'", item.ProductID)
+	if item.ProductID != productID {
+		t.Errorf("expected product ID '%s', got '%s'", productID, item.ProductID)
 	}
 
 	if item.Quantity != 2 {
@@ -39,9 +43,12 @@ func TestNewOrderItem_Success(t *testing.T) {
 }
 
 func TestNewOrderItem_InvalidQuantity(t *testing.T) {
+	orderID := uuid.New()
+	productID := uuid.New()
+
 	_, err := NewOrderItem(
-		"order123",
-		"prod123",
+		orderID,
+		productID,
 		"Product",
 		"SKU-001",
 		decimal.NewFromFloat(10.00),
@@ -54,9 +61,12 @@ func TestNewOrderItem_InvalidQuantity(t *testing.T) {
 }
 
 func TestNewOrderItem_InvalidPrice(t *testing.T) {
+	orderID := uuid.New()
+	productID := uuid.New()
+
 	_, err := NewOrderItem(
-		"order123",
-		"prod123",
+		orderID,
+		productID,
 		"Product",
 		"SKU-001",
 		decimal.Zero,
@@ -69,12 +79,15 @@ func TestNewOrderItem_InvalidPrice(t *testing.T) {
 }
 
 func TestNewOrderItemFromProduct_Success(t *testing.T) {
+	orderID := uuid.New()
+	currencyID := uuid.New()
+
 	product, _ := NewProduct(
 		"Wireless Headphones",
 		"Premium headphones",
 		"AUDIO-WH-001",
 		decimal.NewFromFloat(100.00),
-		"USD",
+		currencyID,
 		50,
 	)
 
@@ -82,7 +95,7 @@ func TestNewOrderItemFromProduct_Success(t *testing.T) {
 	exchangeRate := decimal.NewFromFloat(0.92)
 
 	item, err := NewOrderItemFromProduct(
-		"order123",
+		orderID,
 		product,
 		2,
 		exchangeRate,
@@ -114,9 +127,12 @@ func TestNewOrderItemFromProduct_Success(t *testing.T) {
 }
 
 func TestOrderItem_UpdateQuantity(t *testing.T) {
+	orderID := uuid.New()
+	productID := uuid.New()
+
 	item, _ := NewOrderItem(
-		"order123",
-		"prod123",
+		orderID,
+		productID,
 		"Product",
 		"SKU-001",
 		decimal.NewFromFloat(50.00),
@@ -153,9 +169,12 @@ func TestOrderItem_CalculateSubtotal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			orderID := uuid.New()
+			productID := uuid.New()
+
 			item, _ := NewOrderItem(
-				"order123",
-				"prod123",
+				orderID,
+				productID,
 				"Product",
 				"SKU-001",
 				decimal.NewFromFloat(tt.unitPrice),
