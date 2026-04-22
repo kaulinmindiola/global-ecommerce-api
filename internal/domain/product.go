@@ -9,46 +9,73 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// Product represents an item in the e-commerce catalog.
-// It stores pricing in a base currency and maintains inventory levels.
+// Product represents a product in the global e-commerce catalog.
+//
+// Architecture notes:
+// - BasePrice uses decimal.Decimal to avoid floating-point errors
+// - BaseCurrencyID stores FK reference to currencies table
+// - BaseCurrencyCode is populated via JOIN for read operations
+// - StockQuantity is persisted inventory quantity
 type Product struct {
-	ID           string          `json:"id"`
-	Name         string          `json:"name"`
-	Description  string          `json:"description"`
-	SKU          string          `json:"sku"`
-	BasePrice    decimal.Decimal `json:"base_price"`
-	BaseCurrency string          `json:"base_currency"`
-	StockQty     int             `json:"stock_quantity"`
-	IsActive     bool            `json:"is_active"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
+	ID               uuid.UUID       `json:"id"`
+	Name             string          `json:"name"`
+	Description      string          `json:"description"`
+	SKU              string          `json:"sku"`
+	BasePrice        decimal.Decimal `json:"base_price"`
+	BaseCurrencyID   uuid.UUID       `json:"base_currency_id"`
+	BaseCurrencyCode string          `json:"base_currency_code,omitempty"`
+	StockQuantity    int             `json:"stock_quantity"`
+	IsActive         bool            `json:"is_active"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
 }
 
-// Product validation errors
+//
+// Domain Errors
+//
+
 var (
 	ErrProductNameRequired    = errors.New("product name is required")
 	ErrProductNameTooShort    = errors.New("product name must be at least 2 characters")
 	ErrProductSKURequired     = errors.New("product SKU is required")
 	ErrProductSKUInvalid      = errors.New("product SKU must be alphanumeric with hyphens")
 	ErrProductPriceInvalid    = errors.New("product price must be greater than zero")
-	ErrProductCurrencyInvalid = errors.New("product base currency must be a valid 3-letter code")
+	ErrProductCurrencyInvalid = errors.New("product base currency is invalid")
 	ErrProductStockNegative   = errors.New("product stock quantity cannot be negative")
-	ErrInsufficientStock      = errors.New("insufficient stock for requested quantity")
+	//ErrInsufficientStock      = errors.New("insufficient stock")
 )
 
-// NewProduct creates a new Product with validated fields.
-func NewProduct(name, description, sku string, basePrice decimal.Decimal, baseCurrency string, stockQty int) (*Product, error) {
+//
+// Constructor
+//
+
+// NewProduct creates a new validated product.
+//
+// Notes:
+// - SKU is normalized to uppercase
+// - Product starts active
+// - BaseCurrencyCode is optional and usually filled by repository JOINs
+func NewProduct(
+	name string,
+	description string,
+	sku string,
+	basePrice decimal.Decimal,
+	baseCurrencyID uuid.UUID,
+	stockQuantity int,
+) (*Product, error) {
+	now := time.Now().UTC()
+
 	product := &Product{
-		ID:           uuid.New().String(),
-		Name:         strings.TrimSpace(name),
-		Description:  strings.TrimSpace(description),
-		SKU:          strings.TrimSpace(sku),
-		BasePrice:    basePrice,
-		BaseCurrency: strings.TrimSpace(baseCurrency),
-		StockQty:     stockQty,
-		IsActive:     true,
-		CreatedAt:    time.Now().UTC(),
-		UpdatedAt:    time.Now().UTC(),
+		ID:             uuid.New(),
+		Name:           strings.TrimSpace(name),
+		Description:    strings.TrimSpace(description),
+		SKU:            strings.ToUpper(strings.TrimSpace(sku)),
+		BasePrice:      basePrice,
+		BaseCurrencyID: baseCurrencyID,
+		StockQuantity:  stockQuantity,
+		IsActive:       true,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	if err := product.Validate(); err != nil {
@@ -58,12 +85,17 @@ func NewProduct(name, description, sku string, basePrice decimal.Decimal, baseCu
 	return product, nil
 }
 
-// Validate checks if the Product fields meet business rules.
+//
+// Validation
+//
+
+// Validate enforces domain business rules.
 func (p *Product) Validate() error {
 	// Name validation
 	if p.Name == "" {
 		return ErrProductNameRequired
 	}
+
 	if len(p.Name) < 2 {
 		return ErrProductNameTooShort
 	}
@@ -72,6 +104,7 @@ func (p *Product) Validate() error {
 	if p.SKU == "" {
 		return ErrProductSKURequired
 	}
+
 	if !isValidSKU(p.SKU) {
 		return ErrProductSKUInvalid
 	}
@@ -82,63 +115,65 @@ func (p *Product) Validate() error {
 	}
 
 	// Currency validation
-	if !currencyRegex.MatchString(p.BaseCurrency) {
+	if p.BaseCurrencyID == uuid.Nil {
 		return ErrProductCurrencyInvalid
 	}
 
 	// Stock validation
-	if p.StockQty < 0 {
+	if p.StockQuantity < 0 {
 		return ErrProductStockNegative
 	}
 
 	return nil
 }
 
-// UpdateStock adjusts the stock quantity.
-// Returns error if the adjustment would result in negative stock.
-func (p *Product) UpdateStock(adjustment int) error {
-	newStock := p.StockQty + adjustment
+//
+// Domain Behaviors
+//
+
+// UpdateStock adjusts stock quantity safely.
+func (p *Product) UpdateStock(delta int) error {
+	newStock := p.StockQuantity + delta
 
 	if newStock < 0 {
 		return ErrProductStockNegative
 	}
 
-	p.StockQty = newStock
+	p.StockQuantity = newStock
 	p.UpdatedAt = time.Now().UTC()
 
 	return nil
 }
 
-// ReserveStock decreases stock for an order.
-// This method should be called within a database transaction.
+// ReserveStock reserves stock for an order.
 func (p *Product) ReserveStock(quantity int) error {
 	if quantity <= 0 {
 		return errors.New("quantity must be positive")
 	}
 
-	if p.StockQty < quantity {
+	if p.StockQuantity < quantity {
 		return ErrInsufficientStock
 	}
 
-	p.StockQty -= quantity
+	p.StockQuantity -= quantity
 	p.UpdatedAt = time.Now().UTC()
 
 	return nil
 }
 
-// RestoreStock increases stock (e.g., when order is cancelled).
+// RestoreStock restores stock after cancellation/refund.
 func (p *Product) RestoreStock(quantity int) error {
 	if quantity <= 0 {
 		return errors.New("quantity must be positive")
 	}
 
-	p.StockQty += quantity
+	p.StockQuantity += quantity
 	p.UpdatedAt = time.Now().UTC()
 
 	return nil
 }
 
-// UpdatePrice changes the base price of the product.
+// UpdatePrice updates product price.
 func (p *Product) UpdatePrice(newPrice decimal.Decimal) error {
 	if newPrice.LessThanOrEqual(decimal.Zero) {
 		return ErrProductPriceInvalid
@@ -150,29 +185,33 @@ func (p *Product) UpdatePrice(newPrice decimal.Decimal) error {
 	return nil
 }
 
-// Deactivate marks the product as inactive (e.g., discontinued).
+// Deactivate performs soft disable.
 func (p *Product) Deactivate() {
 	p.IsActive = false
 	p.UpdatedAt = time.Now().UTC()
 }
 
-// Activate marks the product as active.
+// Activate enables the product.
 func (p *Product) Activate() {
 	p.IsActive = true
 	p.UpdatedAt = time.Now().UTC()
 }
 
-// IsInStock returns true if the product has available stock.
+// IsInStock returns true if inventory exists.
 func (p *Product) IsInStock() bool {
-	return p.StockQty > 0
+	return p.StockQuantity > 0
 }
 
-// CanFulfillOrder checks if there's enough stock for a given quantity.
+// CanFulfillOrder validates enough stock.
 func (p *Product) CanFulfillOrder(quantity int) bool {
-	return p.StockQty >= quantity
+	return p.StockQuantity >= quantity
 }
 
-// isValidSKU checks if SKU contains only alphanumeric characters and hyphens.
+//
+// Helpers
+//
+
+// isValidSKU validates uppercase alphanumeric SKU + hyphen.
 func isValidSKU(sku string) bool {
 	for _, char := range sku {
 		if !((char >= 'A' && char <= 'Z') ||
@@ -181,5 +220,6 @@ func isValidSKU(sku string) bool {
 			return false
 		}
 	}
+
 	return len(sku) > 0
 }
