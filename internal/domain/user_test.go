@@ -2,14 +2,18 @@ package domain
 
 import (
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestNewUser_Success(t *testing.T) {
+	currencyID := uuid.New()
+
 	user, err := NewUser(
 		"kaulin@example.com",
 		"Kaulin Mindiola",
 		"$2a$10$hashedpassword",
-		"USD",
+		currencyID,
 		"America/Bogota",
 	)
 
@@ -21,8 +25,11 @@ func TestNewUser_Success(t *testing.T) {
 		t.Errorf("expected email 'kaulin@example.com', got '%s'", user.Email)
 	}
 
-	if user.PreferredCurrency != "USD" {
-		t.Errorf("expected currency 'USD', got '%s'", user.PreferredCurrency)
+	if user.PreferredCurrencyID != currencyID {
+		t.Errorf("expected preferred currency ID %v, got %v",
+			currencyID,
+			user.PreferredCurrencyID,
+		)
 	}
 
 	if !user.IsActive {
@@ -31,6 +38,8 @@ func TestNewUser_Success(t *testing.T) {
 }
 
 func TestNewUser_InvalidEmail(t *testing.T) {
+	currencyID := uuid.New()
+
 	tests := []struct {
 		name  string
 		email string
@@ -47,7 +56,7 @@ func TestNewUser_InvalidEmail(t *testing.T) {
 				tt.email,
 				"Kaulin Mindiola",
 				"$2a$10$hashedpassword",
-				"USD",
+				currencyID,
 				"UTC",
 			)
 
@@ -59,6 +68,8 @@ func TestNewUser_InvalidEmail(t *testing.T) {
 }
 
 func TestNewUser_InvalidFullName(t *testing.T) {
+	currencyID := uuid.New()
+
 	tests := []struct {
 		name     string
 		fullName string
@@ -74,7 +85,7 @@ func TestNewUser_InvalidFullName(t *testing.T) {
 				"kaulin@example.com",
 				tt.fullName,
 				"$2a$10$hashedpassword",
-				"USD",
+				currencyID,
 				"UTC",
 			)
 
@@ -86,11 +97,12 @@ func TestNewUser_InvalidFullName(t *testing.T) {
 }
 
 func TestNewUser_InvalidCurrency(t *testing.T) {
+	// uuid.Nil simula ausencia de FK válida
 	_, err := NewUser(
 		"kaulin@example.com",
 		"Kaulin Mindiola",
 		"$2a$10$hashedpassword",
-		"INVALID",
+		uuid.Nil,
 		"UTC",
 	)
 
@@ -100,15 +112,22 @@ func TestNewUser_InvalidCurrency(t *testing.T) {
 }
 
 func TestUser_UpdateProfile(t *testing.T) {
+	initialCurrencyID := uuid.New()
+	newCurrencyID := uuid.New()
+
 	user, _ := NewUser(
 		"kaulin@example.com",
 		"Kaulin Mindiola",
 		"$2a$10$hashedpassword",
-		"USD",
+		initialCurrencyID,
 		"UTC",
 	)
 
-	err := user.UpdateProfile("Kaulin A. Mindiola", "EUR", "Europe/Madrid")
+	err := user.UpdateProfile(
+		"Kaulin A. Mindiola",
+		newCurrencyID,
+		"Europe/Madrid",
+	)
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -118,17 +137,22 @@ func TestUser_UpdateProfile(t *testing.T) {
 		t.Errorf("expected updated name, got '%s'", user.FullName)
 	}
 
-	if user.PreferredCurrency != "EUR" {
-		t.Errorf("expected currency 'EUR', got '%s'", user.PreferredCurrency)
+	if user.PreferredCurrencyID != newCurrencyID {
+		t.Errorf("expected currency ID %v, got %v",
+			newCurrencyID,
+			user.PreferredCurrencyID,
+		)
 	}
 }
 
 func TestUser_Deactivate(t *testing.T) {
+	currencyID := uuid.New()
+
 	user, _ := NewUser(
 		"kaulin@example.com",
 		"Kaulin Mindiola",
 		"$2a$10$hashedpassword",
-		"USD",
+		currencyID,
 		"UTC",
 	)
 
@@ -140,11 +164,13 @@ func TestUser_Deactivate(t *testing.T) {
 }
 
 func TestUser_Activate(t *testing.T) {
+	currencyID := uuid.New()
+
 	user, _ := NewUser(
 		"kaulin@example.com",
 		"Kaulin Mindiola",
 		"$2a$10$hashedpassword",
-		"USD",
+		currencyID,
 		"UTC",
 	)
 
