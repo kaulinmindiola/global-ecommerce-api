@@ -11,9 +11,9 @@ import (
 // OrderItem represents a single product line in an order.
 // It captures product details at the time of purchase for audit trail.
 type OrderItem struct {
-	ID          string          `json:"id"`
-	OrderID     string          `json:"order_id"`
-	ProductID   string          `json:"product_id"`
+	ID          uuid.UUID       `json:"id"`
+	OrderID     uuid.UUID       `json:"order_id"`
+	ProductID   uuid.UUID       `json:"product_id"`
 	ProductName string          `json:"product_name"` // Snapshot at time of purchase
 	ProductSKU  string          `json:"product_sku"`  // Snapshot at time of purchase
 	UnitPrice   decimal.Decimal `json:"unit_price"`   // Price in order currency
@@ -32,9 +32,16 @@ var (
 )
 
 // NewOrderItem creates a new OrderItem with validated fields.
-func NewOrderItem(orderID, productID, productName, productSKU string, unitPrice decimal.Decimal, quantity int) (*OrderItem, error) {
+func NewOrderItem(
+	orderID uuid.UUID,
+	productID uuid.UUID,
+	productName string,
+	productSKU string,
+	unitPrice decimal.Decimal,
+	quantity int,
+) (*OrderItem, error) {
 	item := &OrderItem{
-		ID:          uuid.New().String(),
+		ID:          uuid.New(),
 		OrderID:     orderID,
 		ProductID:   productID,
 		ProductName: productName,
@@ -45,7 +52,7 @@ func NewOrderItem(orderID, productID, productName, productSKU string, unitPrice 
 		CreatedAt:   time.Now().UTC(),
 	}
 
-	// Calculate subtotal
+	// Calculate subtotal before validation
 	item.CalculateSubtotal()
 
 	if err := item.Validate(); err != nil {
@@ -57,7 +64,12 @@ func NewOrderItem(orderID, productID, productName, productSKU string, unitPrice 
 
 // NewOrderItemFromProduct creates an OrderItem from a Product.
 // This is a convenience method that automatically captures product details.
-func NewOrderItemFromProduct(orderID string, product *Product, quantity int, exchangeRate decimal.Decimal) (*OrderItem, error) {
+func NewOrderItemFromProduct(
+	orderID uuid.UUID,
+	product *Product,
+	quantity int,
+	exchangeRate decimal.Decimal,
+) (*OrderItem, error) {
 	// Convert product price to order currency using exchange rate
 	unitPrice := product.BasePrice.Mul(exchangeRate)
 
@@ -74,7 +86,7 @@ func NewOrderItemFromProduct(orderID string, product *Product, quantity int, exc
 // Validate checks if the OrderItem fields meet business rules.
 func (oi *OrderItem) Validate() error {
 	// Product ID validation
-	if oi.ProductID == "" {
+	if oi.ProductID == uuid.Nil {
 		return ErrOrderItemProductIDRequired
 	}
 
@@ -103,7 +115,9 @@ func (oi *OrderItem) Validate() error {
 
 // CalculateSubtotal computes the subtotal (unit price × quantity).
 func (oi *OrderItem) CalculateSubtotal() {
-	oi.Subtotal = oi.UnitPrice.Mul(decimal.NewFromInt(int64(oi.Quantity)))
+	oi.Subtotal = oi.UnitPrice.Mul(
+		decimal.NewFromInt(int64(oi.Quantity)),
+	)
 }
 
 // UpdateQuantity changes the quantity and recalculates the subtotal.
