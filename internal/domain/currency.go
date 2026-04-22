@@ -9,38 +9,71 @@ import (
 )
 
 // Currency represents a supported currency in the system.
-// Follows ISO 4217 standard for currency codes.
+// Follows ISO 4217 standard for currency codes and supports
+// financial exchange-rate operations for global e-commerce.
 type Currency struct {
-	ID            string    `json:"id"`
-	Code          string    `json:"code"`           // ISO 4217 code (USD, EUR, etc.)
-	Name          string    `json:"name"`           // Full name (US Dollar, Euro, etc.)
-	Symbol        string    `json:"symbol"`         // Currency symbol ($, €, etc.)
-	DecimalPlaces int       `json:"decimal_places"` // Number of decimal places (2 for most, 0 for JPY)
-	IsActive      bool      `json:"is_active"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID                uuid.UUID `json:"id"`
+	Code              string    `json:"code"`                 // ISO 4217 code (USD, EUR, COP)
+	Name              string    `json:"name"`                 // Full currency name
+	Symbol            string    `json:"symbol"`               // Currency symbol ($, €, £)
+	DecimalPlaces     int       `json:"decimal_places"`       // Usually 2, JPY = 0
+	ExchangeRateToUSD float64   `json:"exchange_rate_to_usd"` // Relative conversion rate to USD
+	IsActive          bool      `json:"is_active"`            // Soft enable/disable
+	RateUpdatedAt     time.Time `json:"rate_updated_at"`      // Last FX update timestamp
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
-// Currency validation errors
+//
+// Domain Errors
+//
+
 var (
+	// Generic domain errors
+	ErrNotFound = errors.New("resource not found")
+
+	// Currency validation errors
 	ErrCurrencyCodeRequired   = errors.New("currency code is required")
 	ErrCurrencyCodeInvalid    = errors.New("currency code must be 3 uppercase letters")
 	ErrCurrencyNameRequired   = errors.New("currency name is required")
 	ErrCurrencySymbolRequired = errors.New("currency symbol is required")
 	ErrCurrencyDecimalInvalid = errors.New("decimal places must be between 0 and 4")
+
+	// Exchange rate validation errors
+	ErrExchangeRateInvalid      = errors.New("exchange rate must be greater than zero")
+	ErrExchangeRateSameCurrency = errors.New("from and to currency must be different")
 )
 
-// NewCurrency creates a new Currency with validated fields.
-func NewCurrency(code, name, symbol string, decimalPlaces int) (*Currency, error) {
+//
+// Currency Constructor
+//
+
+// NewCurrency creates a new Currency with validated business rules.
+//
+// Default rules:
+// - Code is normalized to uppercase
+// - ExchangeRateToUSD starts at 1.0 by default
+// - Currency starts active
+// - RateUpdatedAt initialized immediately
+func NewCurrency(
+	code string,
+	name string,
+	symbol string,
+	decimalPlaces int,
+) (*Currency, error) {
+	now := time.Now().UTC()
+
 	currency := &Currency{
-		ID:            uuid.New().String(),
-		Code:          strings.TrimSpace(code),
-		Name:          strings.TrimSpace(name),
-		Symbol:        strings.TrimSpace(symbol),
-		DecimalPlaces: decimalPlaces,
-		IsActive:      true,
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
+		ID:                uuid.New(),
+		Code:              strings.ToUpper(strings.TrimSpace(code)),
+		Name:              strings.TrimSpace(name),
+		Symbol:            strings.TrimSpace(symbol),
+		DecimalPlaces:     decimalPlaces,
+		ExchangeRateToUSD: 1.0,
+		IsActive:          true,
+		RateUpdatedAt:     now,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 
 	if err := currency.Validate(); err != nil {
@@ -50,12 +83,17 @@ func NewCurrency(code, name, symbol string, decimalPlaces int) (*Currency, error
 	return currency, nil
 }
 
-// Validate checks if the Currency fields meet business rules.
+//
+// Currency Validation
+//
+
+// Validate checks if Currency satisfies business constraints.
 func (c *Currency) Validate() error {
-	// Code validation
+	// ISO code validation
 	if c.Code == "" {
 		return ErrCurrencyCodeRequired
 	}
+
 	if !currencyRegex.MatchString(c.Code) {
 		return ErrCurrencyCodeInvalid
 	}
@@ -78,46 +116,79 @@ func (c *Currency) Validate() error {
 	return nil
 }
 
-// Deactivate marks the currency as inactive.
-// Inactive currencies cannot be used for new transactions.
+//
+// Domain Behaviors
+//
+
+// Deactivate disables the currency for future transactions.
 func (c *Currency) Deactivate() {
 	c.IsActive = false
 	c.UpdatedAt = time.Now().UTC()
 }
 
-// Activate marks the currency as active.
+// Activate enables the currency for transactions.
 func (c *Currency) Activate() {
 	c.IsActive = true
 	c.UpdatedAt = time.Now().UTC()
 }
 
+// UpdateExchangeRate updates the conversion rate relative to USD.
+//
+// This is a domain behavior and should be used by services
+// instead of directly mutating the field.
+func (c *Currency) UpdateExchangeRate(rate float64) error {
+	if rate <= 0 {
+		return ErrExchangeRateInvalid
+	}
+
+	now := time.Now().UTC()
+
+	c.ExchangeRateToUSD = rate
+	c.RateUpdatedAt = now
+	c.UpdatedAt = now
+
+	return nil
+}
+
+//
+// ExchangeRate Entity
+//
+
 // ExchangeRate represents a conversion rate between two currencies.
+//
+// This is useful when storing external FX history
+// independently from the base Currency entity.
 type ExchangeRate struct {
-	ID            string    `json:"id"`
+	ID            uuid.UUID `json:"id"`
 	FromCurrency  string    `json:"from_currency"`
 	ToCurrency    string    `json:"to_currency"`
 	Rate          float64   `json:"rate"`
 	EffectiveDate time.Time `json:"effective_date"`
-	Source        string    `json:"source"` // API source (e.g., "exchangerate-api")
+	Source        string    `json:"source"` // Example: exchangerate-api
 	CreatedAt     time.Time `json:"created_at"`
 }
 
-// ExchangeRate validation errors
-var (
-	ErrExchangeRateInvalid      = errors.New("exchange rate must be greater than zero")
-	ErrExchangeRateSameCurrency = errors.New("from and to currency must be different")
-)
+//
+// ExchangeRate Constructor
+//
 
-// NewExchangeRate creates a new ExchangeRate with validated fields.
-func NewExchangeRate(fromCurrency, toCurrency string, rate float64, source string) (*ExchangeRate, error) {
+// NewExchangeRate creates a validated exchange rate entity.
+func NewExchangeRate(
+	fromCurrency string,
+	toCurrency string,
+	rate float64,
+	source string,
+) (*ExchangeRate, error) {
+	now := time.Now().UTC()
+
 	exchangeRate := &ExchangeRate{
-		ID:            uuid.New().String(),
+		ID:            uuid.New(),
 		FromCurrency:  strings.ToUpper(strings.TrimSpace(fromCurrency)),
 		ToCurrency:    strings.ToUpper(strings.TrimSpace(toCurrency)),
 		Rate:          rate,
-		EffectiveDate: time.Now().UTC(),
-		Source:        source,
-		CreatedAt:     time.Now().UTC(),
+		EffectiveDate: now,
+		Source:        strings.TrimSpace(source),
+		CreatedAt:     now,
 	}
 
 	if err := exchangeRate.Validate(); err != nil {
@@ -127,14 +198,16 @@ func NewExchangeRate(fromCurrency, toCurrency string, rate float64, source strin
 	return exchangeRate, nil
 }
 
-// Validate checks if the ExchangeRate fields meet business rules.
+//
+// ExchangeRate Validation
+//
+
+// Validate ensures ExchangeRate satisfies business constraints.
 func (e *ExchangeRate) Validate() error {
-	// Rate validation
 	if e.Rate <= 0 {
 		return ErrExchangeRateInvalid
 	}
 
-	// Currency codes validation
 	if e.FromCurrency == e.ToCurrency {
 		return ErrExchangeRateSameCurrency
 	}
@@ -150,7 +223,11 @@ func (e *ExchangeRate) Validate() error {
 	return nil
 }
 
-// Convert applies the exchange rate to an amount.
+//
+// ExchangeRate Behavior
+//
+
+// Convert applies the exchange rate to a monetary amount.
 func (e *ExchangeRate) Convert(amount float64) float64 {
 	return amount * e.Rate
 }
