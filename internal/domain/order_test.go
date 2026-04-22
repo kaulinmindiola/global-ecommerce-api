@@ -3,14 +3,15 @@ package domain
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
 func TestNewOrder_Success(t *testing.T) {
 	items := []OrderItem{
 		{
-			ID:          "item1",
-			ProductID:   "prod1",
+			ID:          uuid.New(),
+			ProductID:   uuid.New(),
 			ProductName: "Product 1",
 			ProductSKU:  "SKU-001",
 			UnitPrice:   decimal.NewFromFloat(50.00),
@@ -68,7 +69,7 @@ func TestNewOrder_NoItems(t *testing.T) {
 func TestNewOrder_InvalidCurrency(t *testing.T) {
 	items := []OrderItem{
 		{
-			ProductID:   "prod1",
+			ProductID:   uuid.New(),
 			ProductName: "Product 1",
 			ProductSKU:  "SKU-001",
 			UnitPrice:   decimal.NewFromFloat(50.00),
@@ -92,7 +93,7 @@ func TestNewOrder_InvalidCurrency(t *testing.T) {
 func TestOrder_Confirm(t *testing.T) {
 	items := []OrderItem{
 		{
-			ProductID:   "prod1",
+			ProductID:   uuid.New(),
 			ProductName: "Product 1",
 			ProductSKU:  "SKU-001",
 			UnitPrice:   decimal.NewFromFloat(50.00),
@@ -121,7 +122,7 @@ func TestOrder_Confirm(t *testing.T) {
 func TestOrder_Cancel_FromPending(t *testing.T) {
 	items := []OrderItem{
 		{
-			ProductID:   "prod1",
+			ProductID:   uuid.New(),
 			ProductName: "Product 1",
 			ProductSKU:  "SKU-001",
 			UnitPrice:   decimal.NewFromFloat(50.00),
@@ -150,7 +151,7 @@ func TestOrder_Cancel_FromPending(t *testing.T) {
 func TestOrder_CannotCancelShipped(t *testing.T) {
 	items := []OrderItem{
 		{
-			ProductID:   "prod1",
+			ProductID:   uuid.New(),
 			ProductName: "Product 1",
 			ProductSKU:  "SKU-001",
 			UnitPrice:   decimal.NewFromFloat(50.00),
@@ -173,7 +174,7 @@ func TestOrder_CannotCancelShipped(t *testing.T) {
 func TestOrder_Ship(t *testing.T) {
 	items := []OrderItem{
 		{
-			ProductID:   "prod1",
+			ProductID:   uuid.New(),
 			ProductName: "Product 1",
 			ProductSKU:  "SKU-001",
 			UnitPrice:   decimal.NewFromFloat(50.00),
@@ -199,7 +200,7 @@ func TestOrder_Ship(t *testing.T) {
 func TestOrder_Deliver(t *testing.T) {
 	items := []OrderItem{
 		{
-			ProductID:   "prod1",
+			ProductID:   uuid.New(),
 			ProductName: "Product 1",
 			ProductSKU:  "SKU-001",
 			UnitPrice:   decimal.NewFromFloat(50.00),
@@ -226,7 +227,7 @@ func TestOrder_Deliver(t *testing.T) {
 func TestOrder_CalculateTotals_FreeShipping(t *testing.T) {
 	items := []OrderItem{
 		{
-			ProductID:   "prod1",
+			ProductID:   uuid.New(),
 			ProductName: "Product 1",
 			ProductSKU:  "SKU-001",
 			UnitPrice:   decimal.NewFromFloat(150.00),
@@ -246,7 +247,7 @@ func TestOrder_CalculateTotals_FreeShipping(t *testing.T) {
 func TestOrder_CalculateTotals_WithShipping(t *testing.T) {
 	items := []OrderItem{
 		{
-			ProductID:   "prod1",
+			ProductID:   uuid.New(),
 			ProductName: "Product 1",
 			ProductSKU:  "SKU-001",
 			UnitPrice:   decimal.NewFromFloat(50.00),
