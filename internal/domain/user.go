@@ -10,18 +10,26 @@ import (
 )
 
 // User represents a customer in the e-commerce platform.
-// It stores user authentication credentials and preferences including
-// preferred currency and timezone for personalized experience.
+// It stores authentication credentials and user preferences.
+//
+// Enterprise design note:
+// We use PreferredCurrencyID as FK -> currencies.id instead of storing
+// only the ISO code string directly. This guarantees referential integrity
+// and keeps the domain aligned with PostgreSQL relations.
+//
+// PreferredCurrencyCode is optional and used mainly for read operations
+// (JOIN with currencies table), similar to Product.BaseCurrencyCode.
 type User struct {
-	ID                string    `json:"id"`
-	Email             string    `json:"email"`
-	FullName          string    `json:"full_name"`
-	PasswordHash      string    `json:"-"` // Never serialize password
-	PreferredCurrency string    `json:"preferred_currency"`
-	PreferredTimezone string    `json:"preferred_timezone"`
-	IsActive          bool      `json:"is_active"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                    uuid.UUID `json:"id"`
+	Email                 string    `json:"email"`
+	FullName              string    `json:"full_name"`
+	PasswordHash          string    `json:"-"` // Never serialize password
+	PreferredCurrencyID   uuid.UUID `json:"preferred_currency_id"`
+	PreferredCurrencyCode string    `json:"preferred_currency_code,omitempty"`
+	PreferredTimezone     string    `json:"preferred_timezone"`
+	IsActive              bool      `json:"is_active"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
 }
 
 // Validation errors
@@ -44,18 +52,26 @@ var (
 )
 
 // NewUser creates a new User with validated fields.
-// Returns error if any validation fails.
-func NewUser(email, fullName, passwordHash, currency, timezone string) (*User, error) {
+//
+// preferredCurrencyID must reference an existing currency record
+// in the currencies table.
+func NewUser(
+	email,
+	fullName,
+	passwordHash string,
+	preferredCurrencyID uuid.UUID,
+	timezone string,
+) (*User, error) {
 	user := &User{
-		ID:                uuid.New().String(),
-		Email:             strings.TrimSpace(email),
-		FullName:          strings.TrimSpace(fullName),
-		PasswordHash:      passwordHash,
-		PreferredCurrency: strings.ToUpper(strings.TrimSpace(currency)),
-		PreferredTimezone: strings.TrimSpace(timezone),
-		IsActive:          true,
-		CreatedAt:         time.Now().UTC(),
-		UpdatedAt:         time.Now().UTC(),
+		ID:                  uuid.New(),
+		Email:               strings.TrimSpace(email),
+		FullName:            strings.TrimSpace(fullName),
+		PasswordHash:        strings.TrimSpace(passwordHash),
+		PreferredCurrencyID: preferredCurrencyID,
+		PreferredTimezone:   strings.TrimSpace(timezone),
+		IsActive:            true,
+		CreatedAt:           time.Now().UTC(),
+		UpdatedAt:           time.Now().UTC(),
 	}
 
 	if err := user.Validate(); err != nil {
@@ -89,29 +105,35 @@ func (u *User) Validate() error {
 		return ErrPasswordHashRequired
 	}
 
-	// Currency validation
-	if u.PreferredCurrency != "" && !currencyRegex.MatchString(u.PreferredCurrency) {
+	// Preferred currency FK validation
+	if u.PreferredCurrencyID == uuid.Nil {
 		return ErrInvalidCurrencyCode
 	}
 
-	// Timezone validation (basic check)
-	if u.PreferredTimezone == "" {
-		u.PreferredTimezone = "UTC" // Default timezone
+	// Timezone validation (basic defaulting)
+	if strings.TrimSpace(u.PreferredTimezone) == "" {
+		u.PreferredTimezone = "UTC"
 	}
 
 	return nil
 }
 
-// UpdateProfile updates user profile information.
-// This method maintains the UpdatedAt timestamp.
-func (u *User) UpdateProfile(fullName, currency, timezone string) error {
-	if fullName != "" {
+// UpdateProfile updates mutable profile fields.
+// Currency is updated using FK UUID instead of ISO string.
+func (u *User) UpdateProfile(
+	fullName string,
+	preferredCurrencyID uuid.UUID,
+	timezone string,
+) error {
+	if strings.TrimSpace(fullName) != "" {
 		u.FullName = strings.TrimSpace(fullName)
 	}
-	if currency != "" {
-		u.PreferredCurrency = strings.ToUpper(strings.TrimSpace(currency))
+
+	if preferredCurrencyID != uuid.Nil {
+		u.PreferredCurrencyID = preferredCurrencyID
 	}
-	if timezone != "" {
+
+	if strings.TrimSpace(timezone) != "" {
 		u.PreferredTimezone = strings.TrimSpace(timezone)
 	}
 
