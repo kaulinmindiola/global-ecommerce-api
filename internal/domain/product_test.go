@@ -3,17 +3,20 @@ package domain
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
 func TestNewProduct_Success(t *testing.T) {
 	price := decimal.NewFromFloat(99.99)
+	currencyID := uuid.New()
+
 	product, err := NewProduct(
 		"Wireless Headphones",
 		"Premium noise-canceling headphones",
 		"AUDIO-WH-001",
 		price,
-		"USD",
+		currencyID,
 		50,
 	)
 
@@ -33,12 +36,12 @@ func TestNewProduct_Success(t *testing.T) {
 		t.Errorf("expected price %v, got %v", price, product.BasePrice)
 	}
 
-	if product.BaseCurrency != "USD" {
-		t.Errorf("expected currency 'USD', got '%s'", product.BaseCurrency)
+	if product.BaseCurrencyID != currencyID {
+		t.Errorf("expected currency ID '%s', got '%s'", currencyID, product.BaseCurrencyID)
 	}
 
-	if product.StockQty != 50 {
-		t.Errorf("expected stock 50, got %d", product.StockQty)
+	if product.StockQuantity != 50 {
+		t.Errorf("expected stock 50, got %d", product.StockQuantity)
 	}
 
 	if !product.IsActive {
@@ -47,6 +50,8 @@ func TestNewProduct_Success(t *testing.T) {
 }
 
 func TestNewProduct_InvalidName(t *testing.T) {
+	currencyID := uuid.New()
+
 	tests := []struct {
 		name     string
 		prodName string
@@ -63,7 +68,7 @@ func TestNewProduct_InvalidName(t *testing.T) {
 				"Description",
 				"SKU-001",
 				decimal.NewFromFloat(10.00),
-				"USD",
+				currencyID,
 				10,
 			)
 
@@ -75,6 +80,8 @@ func TestNewProduct_InvalidName(t *testing.T) {
 }
 
 func TestNewProduct_InvalidSKU(t *testing.T) {
+	currencyID := uuid.New()
+
 	tests := []struct {
 		name string
 		sku  string
@@ -92,7 +99,7 @@ func TestNewProduct_InvalidSKU(t *testing.T) {
 				"Description",
 				tt.sku,
 				decimal.NewFromFloat(10.00),
-				"USD",
+				currencyID,
 				10,
 			)
 
@@ -104,6 +111,8 @@ func TestNewProduct_InvalidSKU(t *testing.T) {
 }
 
 func TestNewProduct_InvalidPrice(t *testing.T) {
+	currencyID := uuid.New()
+
 	tests := []struct {
 		name  string
 		price decimal.Decimal
@@ -119,7 +128,7 @@ func TestNewProduct_InvalidPrice(t *testing.T) {
 				"Description",
 				"SKU-001",
 				tt.price,
-				"USD",
+				currencyID,
 				10,
 			)
 
@@ -131,12 +140,14 @@ func TestNewProduct_InvalidPrice(t *testing.T) {
 }
 
 func TestNewProduct_NegativeStock(t *testing.T) {
+	currencyID := uuid.New()
+
 	_, err := NewProduct(
 		"Product Name",
 		"Description",
 		"SKU-001",
 		decimal.NewFromFloat(10.00),
-		"USD",
+		currencyID,
 		-5,
 	)
 
@@ -146,12 +157,14 @@ func TestNewProduct_NegativeStock(t *testing.T) {
 }
 
 func TestProduct_ReserveStock_Success(t *testing.T) {
+	currencyID := uuid.New()
+
 	product, _ := NewProduct(
 		"Product",
 		"Description",
 		"SKU-001",
 		decimal.NewFromFloat(10.00),
-		"USD",
+		currencyID,
 		50,
 	)
 
@@ -161,18 +174,20 @@ func TestProduct_ReserveStock_Success(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if product.StockQty != 40 {
-		t.Errorf("expected stock 40, got %d", product.StockQty)
+	if product.StockQuantity != 40 {
+		t.Errorf("expected stock 40, got %d", product.StockQuantity)
 	}
 }
 
 func TestProduct_ReserveStock_InsufficientStock(t *testing.T) {
+	currencyID := uuid.New()
+
 	product, _ := NewProduct(
 		"Product",
 		"Description",
 		"SKU-001",
 		decimal.NewFromFloat(10.00),
-		"USD",
+		currencyID,
 		5,
 	)
 
@@ -182,18 +197,20 @@ func TestProduct_ReserveStock_InsufficientStock(t *testing.T) {
 		t.Errorf("expected %v, got %v", ErrInsufficientStock, err)
 	}
 
-	if product.StockQty != 5 {
-		t.Errorf("expected stock unchanged at 5, got %d", product.StockQty)
+	if product.StockQuantity != 5 {
+		t.Errorf("expected stock unchanged at 5, got %d", product.StockQuantity)
 	}
 }
 
 func TestProduct_RestoreStock(t *testing.T) {
+	currencyID := uuid.New()
+
 	product, _ := NewProduct(
 		"Product",
 		"Description",
 		"SKU-001",
 		decimal.NewFromFloat(10.00),
-		"USD",
+		currencyID,
 		40,
 	)
 
@@ -203,18 +220,20 @@ func TestProduct_RestoreStock(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if product.StockQty != 50 {
-		t.Errorf("expected stock 50, got %d", product.StockQty)
+	if product.StockQuantity != 50 {
+		t.Errorf("expected stock 50, got %d", product.StockQuantity)
 	}
 }
 
 func TestProduct_UpdatePrice(t *testing.T) {
+	currencyID := uuid.New()
+
 	product, _ := NewProduct(
 		"Product",
 		"Description",
 		"SKU-001",
 		decimal.NewFromFloat(10.00),
-		"USD",
+		currencyID,
 		50,
 	)
 
@@ -231,6 +250,8 @@ func TestProduct_UpdatePrice(t *testing.T) {
 }
 
 func TestProduct_IsInStock(t *testing.T) {
+	currencyID := uuid.New()
+
 	tests := []struct {
 		name     string
 		stockQty int
@@ -247,7 +268,7 @@ func TestProduct_IsInStock(t *testing.T) {
 				"Description",
 				"SKU-001",
 				decimal.NewFromFloat(10.00),
-				"USD",
+				currencyID,
 				tt.stockQty,
 			)
 
@@ -260,12 +281,14 @@ func TestProduct_IsInStock(t *testing.T) {
 }
 
 func TestProduct_CanFulfillOrder(t *testing.T) {
+	currencyID := uuid.New()
+
 	product, _ := NewProduct(
 		"Product",
 		"Description",
 		"SKU-001",
 		decimal.NewFromFloat(10.00),
-		"USD",
+		currencyID,
 		20,
 	)
 
