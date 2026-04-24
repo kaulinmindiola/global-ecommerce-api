@@ -319,36 +319,61 @@ func (s *orderService) ListByUser(ctx context.Context, userID uuid.UUID, params 
 // UpdateStatus transitions an order's status.
 // Delegates each transition to the domain entity methods so the state machine
 // lives in the domain layer where it belongs (Clean Architecture principle).
-func (s *orderService) UpdateStatus(ctx context.Context, id uuid.UUID, newStatus domain.OrderStatus) error {
+func (s *orderService) UpdateStatus(
+	ctx context.Context,
+	id uuid.UUID,
+	newStatus domain.OrderStatus,
+) error {
 	order, err := s.orderRepo.GetByID(ctx, id)
 	if err != nil {
 		return fmt.Errorf("fetching order %s: %w", id, err)
 	}
 
-	// Domain methods enforce valid transitions and return descriptive errors.
+	// Valid transitions are enforced by domain methods.
 	switch newStatus {
 	case domain.OrderStatusConfirmed:
 		err = order.Confirm()
+
 	case domain.OrderStatusCancelled:
 		err = order.Cancel()
+
 	case domain.OrderStatusShipped:
 		err = order.Ship()
+
 	case domain.OrderStatusDelivered:
 		err = order.Deliver()
+
 	default:
-		return fmt.Errorf("unknown order status %q: %w", newStatus, domain.ErrInvalidInput)
+		return fmt.Errorf(
+			"invalid order status %q: %w",
+			newStatus,
+			domain.ErrInvalidInput,
+		)
 	}
 
+	// If the domain rejects the transition, return a real error
+	// so order_handler.go can use:
+	//
+	// if err := h.orderService.UpdateStatus(...); err != nil
+	//
 	if err != nil {
-		// Domain errors (ErrOrderAlreadyCancelled, ErrOrderCannotCancel, etc.) bubble up as-is.
 		return fmt.Errorf("status transition failed: %w", err)
 	}
 
-	if err := s.orderRepo.UpdateStatus(ctx, id, newStatus); err != nil {
-		return fmt.Errorf("persisting status update for order %s: %w", id, err)
+	// Persist full order state after successful transition.
+	// This is the key part so it aligns correctly with order_handler.go.
+	if err := s.orderRepo.UpdateStatus(ctx, id, order.Status); err != nil {
+		return fmt.Errorf(
+			"persisting status update for order %s: %w",
+			id,
+			err,
+		)
 	}
 
-	_ = s.cache.Delete(ctx, fmt.Sprintf("order:%s", id))
+	// Cache invalidation should never break the main flow.
+	if s.cache != nil {
+		_ = s.cache.Delete(ctx, fmt.Sprintf("order:%s", id))
+	}
 
 	return nil
 }
