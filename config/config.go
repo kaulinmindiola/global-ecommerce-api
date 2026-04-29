@@ -1,60 +1,75 @@
+// Package config provides centralised configuration management following the
+// 12-factor app methodology (https://12factor.net/config).
+//
+// Load priority (highest wins):
+//  1. OS environment variables  — production, Docker, Kubernetes, CI
+//  2. .env file                 — developer convenience in local environments
+//  3. config.yaml               — safe baseline defaults
 package config
 
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
+	"gopkg.in/yaml.v3"
 )
 
+// ── Top-level Config struct ───────────────────────────────────────────────────
+
 // Config is the single source of truth for all application settings.
-// It is loaded once at startup from environment variables and injected
-// throughout the dependency graph — never read from os.Getenv again after main().
-//
-// Follows 12-factor app principle III: store config in the environment.
 type Config struct {
-	App      AppConfig
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	JWT      JWTConfig
-	Log      LogConfig
+	App       AppConfig       `yaml:"app"`
+	Server    ServerConfig    `yaml:"server"`
+	Database  DatabaseConfig  `yaml:"database"`
+	Redis     RedisConfig     `yaml:"redis"`
+	JWT       JWTConfig       `yaml:"jwt"`
+	Log       LogConfig       `yaml:"logging"` // Mapeado a "logging" del YAML
+	CORS      CORSConfig      `yaml:"cors"`
+	RateLimit RateLimitConfig `yaml:"rate_limit"`
 }
 
 // AppConfig holds general application metadata.
 type AppConfig struct {
-	// Environment is one of: development, staging, production.
-	Environment string
-	// Version is injected at build time via ldflags.
-	Version    string
-	BuildDate  string
-	CommitHash string
+	Name        string `yaml:"name"`
+	Environment string `yaml:"environment"`
+	Version     string `yaml:"version"`
+	BuildDate   string `yaml:"build_date"`
+	CommitHash  string `yaml:"commit_hash"`
 }
 
-// ServerConfig holds HTTP server tuning parameters.
+// ServerConfig holds HTTP server parameters.
 type ServerConfig struct {
-	Port            string
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	IdleTimeout     time.Duration
-	ShutdownTimeout time.Duration
+	Port            string        `yaml:"port"`
+	ReadTimeout     time.Duration `yaml:"read_timeout"`
+	WriteTimeout    time.Duration `yaml:"write_timeout"`
+	IdleTimeout     time.Duration `yaml:"idle_timeout"`
+	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 }
 
-// DatabaseConfig holds all PostgreSQL connection parameters.
+// DatabaseConfig holds all PostgreSQL connection settings.
 type DatabaseConfig struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	DBName   string
-	SSLMode  string
+	Host     string       `yaml:"host"`
+	Port     int          `yaml:"port"`
+	DBName   string       `yaml:"name"` // Mapeado a "name" del YAML
+	User     string       `yaml:"user"`
+	Password string       `yaml:"-"` // never in YAML
+	SSLMode  string       `yaml:"ssl_mode"`
+	Pool     DBPoolConfig `yaml:"pool"` // Estructura anidada para el pool
+}
 
-	// Connection pool tuning.
-	MaxConns          int32
-	MinConns          int32
-	MaxConnLifetime   time.Duration
-	MaxConnIdleTime   time.Duration
-	HealthCheckPeriod time.Duration
+// DBPoolConfig holds go-pgx pool tuning parameters.
+type DBPoolConfig struct {
+	MaxConns          int32         `yaml:"max_conns"`
+	MinConns          int32         `yaml:"min_conns"`
+	MaxConnLifetime   time.Duration `yaml:"max_conn_lifetime"`
+	MaxConnIdleTime   time.Duration `yaml:"max_conn_idle_time"`
+	HealthCheckPeriod time.Duration `yaml:"health_check_period"`
 }
 
 // DSN builds the PostgreSQL connection string.
@@ -65,12 +80,24 @@ func (d DatabaseConfig) DSN() string {
 	)
 }
 
-// RedisConfig holds Redis connection parameters.
+// RedisConfig holds Redis connection settings.
 type RedisConfig struct {
-	Host     string
-	Port     string
-	Password string
-	DB       int
+	Host     string          `yaml:"host"`
+	Port     string          `yaml:"port"`
+	Password string          `yaml:"-"` // never in YAML
+	DB       int             `yaml:"db"`
+	Pool     RedisPoolConfig `yaml:"pool"`
+}
+
+// RedisPoolConfig holds go-redis pool tuning parameters.
+type RedisPoolConfig struct {
+	PoolSize        int           `yaml:"pool_size"`
+	MinIdleConns    int           `yaml:"min_idle_conns"`
+	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime"`
+	ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time"`
+	DialTimeout     time.Duration `yaml:"dial_timeout"`
+	ReadTimeout     time.Duration `yaml:"read_timeout"`
+	WriteTimeout    time.Duration `yaml:"write_timeout"`
 }
 
 // Addr returns the Redis address in host:port format.
@@ -78,148 +105,233 @@ func (r RedisConfig) Addr() string {
 	return fmt.Sprintf("%s:%s", r.Host, r.Port)
 }
 
-// JWTConfig holds JWT signing and expiration settings.
+// JWTConfig holds JWT signing and lifetime settings.
 type JWTConfig struct {
-	SecretKey       string
-	AccessTokenTTL  time.Duration
-	RefreshTokenTTL time.Duration
+	SecretKey       string        `yaml:"-"` // never in YAML
+	AccessTokenTTL  time.Duration `yaml:"access_ttl"`
+	RefreshTokenTTL time.Duration `yaml:"refresh_ttl"`
 }
 
-// LogConfig controls the structured logger output.
+// LogConfig controls the structured logger behaviour.
 type LogConfig struct {
-	// Level is one of: debug, info, warn, error.
-	Level string
-	// Format is one of: json, text. Use json in production.
-	Format string
+	Level     string `yaml:"level"`
+	Format    string `yaml:"format"`
+	AddSource bool   `yaml:"add_source"`
 }
 
-// Load reads all configuration from environment variables.
-// Returns an error immediately if any required variable is missing —
-// fail-fast at startup is better than a runtime panic under load.
+// CORSConfig holds CORS policy settings.
+type CORSConfig struct {
+	AllowedOrigins string `yaml:"allowed_origins"`
+	MaxAge         string `yaml:"max_age"`
+}
+
+// AllowedOriginList parses the comma-separated AllowedOrigins into a slice.
+func (c CORSConfig) AllowedOriginList() []string {
+	var origins []string
+	for _, o := range strings.Split(c.AllowedOrigins, ",") {
+		if trimmed := strings.TrimSpace(o); trimmed != "" {
+			origins = append(origins, trimmed)
+		}
+	}
+	return origins
+}
+
+// RateLimitConfig holds rate limiting settings.
+type RateLimitConfig struct {
+	RequestsPerWindow int           `yaml:"requests_per_window"`
+	Window            time.Duration `yaml:"window"`
+}
+
+// ── Loader ────────────────────────────────────────────────────────────────────
+
+// Load builds the Config by merging sources in priority order.
 func Load() (*Config, error) {
-	cfg := &Config{
-		App: AppConfig{
-			Environment: envString("APP_ENV", "development"),
-			Version:     envString("APP_VERSION", "dev"),
-			BuildDate:   envString("APP_BUILD_DATE", "unknown"),
-			CommitHash:  envString("APP_COMMIT_HASH", "unknown"),
-		},
-
-		Server: ServerConfig{
-			Port:            envString("APP_PORT", "8080"),
-			ReadTimeout:     envDuration("SERVER_READ_TIMEOUT", 15*time.Second),
-			WriteTimeout:    envDuration("SERVER_WRITE_TIMEOUT", 15*time.Second),
-			IdleTimeout:     envDuration("SERVER_IDLE_TIMEOUT", 60*time.Second),
-			ShutdownTimeout: envDuration("SERVER_SHUTDOWN_TIMEOUT", 30*time.Second),
-		},
-
-		Redis: RedisConfig{
-			Host:     envString("REDIS_HOST", "localhost"),
-			Port:     envString("REDIS_PORT", "6379"),
-			Password: envString("REDIS_PASSWORD", ""),
-			DB:       envInt("REDIS_DB", 0),
-		},
-
-		JWT: JWTConfig{
-			AccessTokenTTL:  envDuration("JWT_ACCESS_TTL", 24*time.Hour),
-			RefreshTokenTTL: envDuration("JWT_REFRESH_TTL", 7*24*time.Hour),
-		},
-
-		Log: LogConfig{
-			Level:  envString("LOG_LEVEL", "info"),
-			Format: envString("LOG_FORMAT", "json"),
-		},
+	cfg, err := loadYAMLDefaults()
+	if err != nil {
+		return nil, fmt.Errorf("loading config.yaml defaults: %w", err)
 	}
 
-	// ── Required fields — fail fast ──────────────────────────────────────
+	_ = godotenv.Load()
 
-	dbHost, err := requireEnv("DATABASE_HOST")
-	if err != nil {
+	applyEnvOverrides(cfg)
+	applyBuildMetadata(cfg)
+
+	if err := validate(cfg); err != nil {
 		return nil, err
 	}
-	dbUser, err := requireEnv("DATABASE_USER")
-	if err != nil {
-		return nil, err
-	}
-	dbPassword, err := requireEnv("DATABASE_PASSWORD")
-	if err != nil {
-		return nil, err
-	}
-	dbName, err := requireEnv("DATABASE_NAME")
-	if err != nil {
-		return nil, err
-	}
-	jwtSecret, err := requireEnv("JWT_SECRET")
-	if err != nil {
-		return nil, err
-	}
-
-	cfg.Database = DatabaseConfig{
-		Host:              dbHost,
-		Port:              envInt("DATABASE_PORT", 5432),
-		User:              dbUser,
-		Password:          dbPassword,
-		DBName:            dbName,
-		SSLMode:           envString("DATABASE_SSL_MODE", "disable"),
-		MaxConns:          int32(envInt("DATABASE_MAX_CONNS", 25)),
-		MinConns:          int32(envInt("DATABASE_MIN_CONNS", 5)),
-		MaxConnLifetime:   envDuration("DATABASE_MAX_CONN_LIFETIME", 30*time.Minute),
-		MaxConnIdleTime:   envDuration("DATABASE_MAX_CONN_IDLE", 5*time.Minute),
-		HealthCheckPeriod: envDuration("DATABASE_HEALTH_CHECK", 1*time.Minute),
-	}
-
-	cfg.JWT.SecretKey = jwtSecret
 
 	return cfg, nil
 }
 
-// IsDevelopment returns true when running in a local development environment.
-func (c *Config) IsDevelopment() bool {
-	return c.App.Environment == "development"
-}
+func loadYAMLDefaults() (*Config, error) {
+	cfg := &Config{}
+	_, filename, _, _ := runtime.Caller(0)
+	projectRoot := filepath.Join(filepath.Dir(filename), "..")
+	yamlPath := filepath.Join(projectRoot, "config", "config.yaml")
 
-// IsProduction returns true when running in a production environment.
-func (c *Config) IsProduction() bool {
-	return c.App.Environment == "production"
-}
-
-// ── Environment variable helpers ─────────────────────────────────────────────
-
-func requireEnv(key string) (string, error) {
-	val := os.Getenv(key)
-	if val == "" {
-		return "", fmt.Errorf("required environment variable %q is not set", key)
-	}
-	return val, nil
-}
-
-func envString(key, defaultVal string) string {
-	if val := os.Getenv(key); val != "" {
-		return val
-	}
-	return defaultVal
-}
-
-func envInt(key string, defaultVal int) int {
-	raw := os.Getenv(key)
-	if raw == "" {
-		return defaultVal
-	}
-	val, err := strconv.Atoi(raw)
+	data, err := os.ReadFile(yamlPath)
 	if err != nil {
-		return defaultVal
+		if os.IsNotExist(err) {
+			return cfg, nil
+		}
+		return nil, fmt.Errorf("reading config.yaml: %w", err)
 	}
-	return val
+
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("parsing config.yaml: %w", err)
+	}
+	return cfg, nil
 }
 
-func envDuration(key string, defaultVal time.Duration) time.Duration {
-	raw := os.Getenv(key)
-	if raw == "" {
-		return defaultVal
+func applyEnvOverrides(cfg *Config) {
+	// App
+	setString(&cfg.App.Environment, "APP_ENV")
+	setString(&cfg.App.Name, "APP_NAME")
+
+	// Server
+	setString(&cfg.Server.Port, "APP_PORT")
+	setDuration(&cfg.Server.ReadTimeout, "SERVER_READ_TIMEOUT")
+	setDuration(&cfg.Server.WriteTimeout, "SERVER_WRITE_TIMEOUT")
+	setDuration(&cfg.Server.IdleTimeout, "SERVER_IDLE_TIMEOUT")
+	setDuration(&cfg.Server.ShutdownTimeout, "SERVER_SHUTDOWN_TIMEOUT")
+
+	// Database (Ajustado para acceder a cfg.Database.Pool.*)
+	setString(&cfg.Database.Host, "DATABASE_HOST")
+	setInt(&cfg.Database.Port, "DATABASE_PORT")
+	setString(&cfg.Database.User, "DATABASE_USER")
+	setString(&cfg.Database.Password, "DATABASE_PASSWORD")
+	setString(&cfg.Database.DBName, "DATABASE_NAME")
+	setString(&cfg.Database.SSLMode, "DATABASE_SSL_MODE")
+	setInt32(&cfg.Database.Pool.MaxConns, "DATABASE_MAX_CONNS")
+	setInt32(&cfg.Database.Pool.MinConns, "DATABASE_MIN_CONNS")
+	setDuration(&cfg.Database.Pool.MaxConnLifetime, "DATABASE_MAX_CONN_LIFETIME")
+	setDuration(&cfg.Database.Pool.MaxConnIdleTime, "DATABASE_MAX_CONN_IDLE")
+	setDuration(&cfg.Database.Pool.HealthCheckPeriod, "DATABASE_HEALTH_CHECK")
+
+	// Redis
+	setString(&cfg.Redis.Host, "REDIS_HOST")
+	setString(&cfg.Redis.Port, "REDIS_PORT")
+	setString(&cfg.Redis.Password, "REDIS_PASSWORD")
+	setInt(&cfg.Redis.DB, "REDIS_DB")
+
+	// JWT
+	setString(&cfg.JWT.SecretKey, "JWT_SECRET")
+	setDuration(&cfg.JWT.AccessTokenTTL, "JWT_ACCESS_TTL")
+	setDuration(&cfg.JWT.RefreshTokenTTL, "JWT_REFRESH_TTL")
+
+	// Log
+	setString(&cfg.Log.Level, "LOG_LEVEL")
+	setString(&cfg.Log.Format, "LOG_FORMAT")
+
+	// CORS & Rate Limit
+	setString(&cfg.CORS.AllowedOrigins, "CORS_ALLOWED_ORIGINS")
+	setIntFromEnv(&cfg.RateLimit.RequestsPerWindow, "RATE_LIMIT_REQUESTS")
+	setDuration(&cfg.RateLimit.Window, "RATE_LIMIT_WINDOW")
+}
+
+func applyBuildMetadata(cfg *Config) {
+	setString(&cfg.App.Version, "APP_VERSION")
+	setString(&cfg.App.BuildDate, "APP_BUILD_DATE")
+	setString(&cfg.App.CommitHash, "APP_COMMIT_HASH")
+}
+
+func validate(cfg *Config) error {
+	var missing []string
+
+	if cfg.Database.Password == "" {
+		missing = append(missing, "DATABASE_PASSWORD")
 	}
-	d, err := time.ParseDuration(raw)
-	if err != nil {
-		return defaultVal
+	if cfg.Database.Host == "" {
+		missing = append(missing, "DATABASE_HOST")
 	}
-	return d
+	if cfg.Database.User == "" {
+		missing = append(missing, "DATABASE_USER")
+	}
+	if cfg.Database.DBName == "" {
+		missing = append(missing, "DATABASE_NAME")
+	}
+	if cfg.JWT.SecretKey == "" {
+		missing = append(missing, "JWT_SECRET")
+	}
+	if cfg.Server.Port == "" {
+		missing = append(missing, "APP_PORT")
+	}
+
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required environment variables: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// ── Environment helpers & Masking ─────────────────────────────────────────────
+
+func (c *Config) IsDevelopment() bool { return c.App.Environment == "development" }
+func (c *Config) IsProduction() bool  { return c.App.Environment == "production" }
+func (c *Config) IsStaging() bool     { return c.App.Environment == "staging" }
+
+// Redacted returns a safe copy for logging.
+func (c *Config) Redacted() map[string]any {
+	return map[string]any{
+		"app": map[string]any{
+			"environment": c.App.Environment,
+			"version":     c.App.Version,
+			"commit":      c.App.CommitHash,
+		},
+		"database": map[string]any{
+			"host":     c.Database.Host,
+			"port":     c.Database.Port,
+			"name":     c.Database.DBName,
+			"user":     c.Database.User,
+			"password": "[REDACTED]",
+			"pool": map[string]any{
+				"max_conns": c.Database.Pool.MaxConns,
+			},
+		},
+		"redis": map[string]any{
+			"addr":     c.Redis.Addr(),
+			"db":       c.Redis.DB,
+			"password": "[REDACTED]",
+		},
+		"jwt": map[string]any{
+			"secret": "[REDACTED]",
+		},
+		"log": map[string]any{
+			"level":  c.Log.Level,
+			"format": c.Log.Format,
+		},
+	}
+}
+
+// ── Low-level env setters ─────────────────────────────────────────────────────
+
+func setString(dest *string, key string) {
+	if v := os.Getenv(key); v != "" {
+		*dest = v
+	}
+}
+
+func setInt(dest *int, key string) {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			*dest = n
+		}
+	}
+}
+
+func setIntFromEnv(dest *int, key string) { setInt(dest, key) }
+
+func setInt32(dest *int32, key string) {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			*dest = int32(n)
+		}
+	}
+}
+
+func setDuration(dest *time.Duration, key string) {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			*dest = d
+		}
+	}
 }
