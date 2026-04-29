@@ -28,6 +28,9 @@ go.work
 # Vendor directory (if using vendor mode)
 vendor/
 
+# Go SDK installer packages
+go*.linux-amd64.tar.gz
+
 # === ENVIRONMENT & CONFIG ===
 .env
 .env.local
