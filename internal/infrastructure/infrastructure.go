@@ -23,11 +23,11 @@ func ConnectPostgres(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.P
 	}
 
 	// Apply pool tuning from configuration.
-	poolCfg.MaxConns = cfg.MaxConns
-	poolCfg.MinConns = cfg.MinConns
-	poolCfg.MaxConnLifetime = cfg.MaxConnLifetime
-	poolCfg.MaxConnIdleTime = cfg.MaxConnIdleTime
-	poolCfg.HealthCheckPeriod = cfg.HealthCheckPeriod
+	poolCfg.MaxConns = cfg.Pool.MaxConns
+	poolCfg.MinConns = cfg.Pool.MinConns
+	poolCfg.MaxConnLifetime = cfg.Pool.MaxConnLifetime
+	poolCfg.MaxConnIdleTime = cfg.Pool.MaxConnIdleTime
+	poolCfg.HealthCheckPeriod = cfg.Pool.HealthCheckPeriod
 
 	const maxRetries = 5
 	var pool *pgxpool.Pool
@@ -35,16 +35,20 @@ func ConnectPostgres(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.P
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		pool, err = pgxpool.NewWithConfig(ctx, poolCfg)
 		if err == nil {
-			// Verify the connection is actually live, not just initialised.
-			if pingErr := pool.Ping(ctx); pingErr == nil {
+			// Verify real DB connectivity
+			pingErr := pool.Ping(ctx)
+			if pingErr == nil {
 				slog.Info("PostgreSQL connected",
 					"host", cfg.Host,
 					"port", cfg.Port,
 					"database", cfg.DBName,
-					"max_conns", cfg.MaxConns,
+					"max_conns", cfg.Pool.MaxConns,
 				)
 				return pool, nil
 			}
+
+			// IMPORTANT: preserve real ping error
+			err = pingErr
 			pool.Close()
 		}
 
@@ -52,18 +56,23 @@ func ConnectPostgres(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.P
 			break
 		}
 
-		// Exponential backoff: 1s, 2s, 4s, 8s between retries.
 		backoff := time.Duration(1<<uint(attempt-1)) * time.Second
+
 		slog.Warn("PostgreSQL connection attempt failed, retrying",
 			"attempt", attempt,
 			"max_retries", maxRetries,
 			"backoff", backoff,
 			"error", err,
 		)
+
 		time.Sleep(backoff)
 	}
 
-	return nil, fmt.Errorf("failed to connect to PostgreSQL after %d attempts: %w", maxRetries, err)
+	return nil, fmt.Errorf(
+		"failed to connect to PostgreSQL after %d attempts: %w",
+		maxRetries,
+		err,
+	)
 }
 
 // ConnectRedis creates and validates a Redis client connection.
@@ -76,16 +85,16 @@ func ConnectRedis(ctx context.Context, cfg config.RedisConfig) (*redis.Client, e
 		Password: cfg.Password,
 		DB:       cfg.DB,
 
-		// Connection pool settings aligned with the PostgreSQL pool for consistency.
-		PoolSize:        10,
-		MinIdleConns:    2,
-		ConnMaxLifetime: 30 * time.Minute,
-		ConnMaxIdleTime: 5 * time.Minute,
+		// Connection pool settings dynamically loaded from configuration.
+		PoolSize:        cfg.Pool.PoolSize,
+		MinIdleConns:    cfg.Pool.MinIdleConns,
+		ConnMaxLifetime: cfg.Pool.ConnMaxLifetime,
+		ConnMaxIdleTime: cfg.Pool.ConnMaxIdleTime,
 
-		// Timeouts prevent hanging connections from blocking request handlers.
-		DialTimeout:  5 * time.Second,
-		ReadTimeout:  3 * time.Second,
-		WriteTimeout: 3 * time.Second,
+		// Timeouts dynamically loaded from configuration.
+		DialTimeout:  cfg.Pool.DialTimeout,
+		ReadTimeout:  cfg.Pool.ReadTimeout,
+		WriteTimeout: cfg.Pool.WriteTimeout,
 	})
 
 	const maxRetries = 5
