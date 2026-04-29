@@ -30,7 +30,6 @@ type Currency struct {
 
 var (
 	// Generic domain errors
-	ErrNotFound = errors.New("resource not found")
 
 	// Currency validation errors
 	ErrCurrencyCodeRequired   = errors.New("currency code is required")
