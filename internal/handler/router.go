@@ -21,7 +21,7 @@ type RouterDeps struct {
 	ProductService  service.ProductService
 	OrderService    service.OrderService
 
-	// Infrastructure
+	// Infrastructure — passed to health handler and rate limiter
 	DB    *pgxpool.Pool
 	Redis *redis.Client
 
@@ -34,26 +34,24 @@ type RouterDeps struct {
 // NewRouter builds and returns the fully configured Chi router.
 // Route groups and middleware are applied here — nowhere else.
 //
-// Route layout:
-//
-//	/api/v1/health            — public
-//	/api/v1/version           — public
-//	/api/v1/auth/*            — public
-//	/api/v1/currencies/*      — public (read-only)
-//	/api/v1/products/*        — GET public, POST/PUT/DELETE require auth
-//	/api/v1/users/*           — requires auth
-//	/api/v1/orders/*          — requires auth
+// Middleware stack order (top = outermost, applied first):
+//  1. RealIP   → Extracts true client IP (Critical for RateLimiter behind proxies)
+//  2. RequestID→ Generates trace ID before anything else logs
+//  3. Logger   → Logs request with IP and trace ID
+//  4. Recoverer→ Catches panics in all downstream code, returns 500
+//  5. Compress → Compresses responses before they reach the client
+//  6. CORS     → Sets headers before any handler can short-circuit
 func NewRouter(deps RouterDeps) http.Handler {
 	r := chi.NewRouter()
 
 	// ── Global middleware stack ──────────────────────────────────────────
-	// Applied to every request regardless of route.
-	r.Use(chiMiddleware.RealIP)      // Trust X-Forwarded-For
-	r.Use(middleware.RequestID)      // Attach trace ID to context + response header
-	r.Use(middleware.Logger)         // Structured request logging
-	r.Use(middleware.Recoverer)      // Catch panics, return 500
-	r.Use(chiMiddleware.Compress(5)) // gzip compression level 5
-	r.Use(middleware.CORS)           // CORS headers
+	// Applied to every request regardless of route. Order is CRITICAL.
+	r.Use(chiMiddleware.RealIP)      // 1. Trust X-Forwarded-For
+	r.Use(middleware.RequestID)      // 2. Attach trace ID
+	r.Use(middleware.Logger)         // 3. Structured request logging
+	r.Use(middleware.Recovery)       // 4. Catch panics, return 500 cleanly
+	r.Use(chiMiddleware.Compress(5)) // 5. gzip compression level 5
+	r.Use(middleware.CORS)           // 6. CORS headers
 
 	// ── Handler instances ────────────────────────────────────────────────
 	healthHandler := NewHealthHandler(deps.DB, deps.Redis, deps.Version, deps.BuildDate, deps.CommitHash)
@@ -72,8 +70,9 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 		// ── Authentication (public) ──────────────────────────────────────
 		r.Route("/auth", func(r chi.Router) {
-			r.Post("/register", authHandler.Register)
-			r.Post("/login", authHandler.Login)
+			// ValidateBody applied strictly to endpoints expecting JSON payloads
+			r.With(middleware.ValidateBody).Post("/register", authHandler.Register)
+			r.With(middleware.ValidateBody).Post("/login", authHandler.Login)
 			r.Post("/logout", authHandler.Logout)
 			r.Post("/refresh", authHandler.RefreshToken)
 		})
@@ -86,37 +85,42 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 		// ── Products ─────────────────────────────────────────────────────
 		// GET endpoints are public — browsing does not require authentication.
-		// Write endpoints (POST, PUT, DELETE) require a valid JWT.
+		// Write endpoints require valid JWT and Rate Limiting.
 		r.Route("/products", func(r chi.Router) {
 			r.Get("/", productHandler.ListProducts)
 			r.Get("/{id}", productHandler.GetProduct)
 
-			// Write routes — protected by JWT middleware.
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.Authenticate(deps.AuthService))
-				r.Post("/", productHandler.CreateProduct)
-				r.Put("/{id}", productHandler.UpdateProduct)
+				r.Use(middleware.RateLimit(deps.Redis))
+
+				r.With(middleware.ValidateBody).Post("/", productHandler.CreateProduct)
+				r.With(middleware.ValidateBody).Put("/{id}", productHandler.UpdateProduct)
 				r.Delete("/{id}", productHandler.DeleteProduct)
 			})
 		})
 
-		// ── Users (all routes require auth) ──────────────────────────────
+		// ── Users (all routes require auth + rate limit) ─────────────────
 		r.Route("/users", func(r chi.Router) {
 			r.Use(middleware.Authenticate(deps.AuthService))
+			r.Use(middleware.RateLimit(deps.Redis))
+
 			r.Get("/me", userHandler.GetMe)
-			r.Put("/me", userHandler.UpdateMe)
+			r.With(middleware.ValidateBody).Put("/me", userHandler.UpdateMe)
 			r.Delete("/me", userHandler.DeleteMe)
 			r.Get("/{id}", userHandler.GetByID) // admin endpoint
 		})
 
-		// ── Orders (all routes require auth) ─────────────────────────────
+		// ── Orders (all routes require auth + rate limit) ────────────────
 		r.Route("/orders", func(r chi.Router) {
 			r.Use(middleware.Authenticate(deps.AuthService))
-			r.Post("/", orderHandler.CreateOrder)
+			r.Use(middleware.RateLimit(deps.Redis))
+
+			r.With(middleware.ValidateBody).Post("/", orderHandler.CreateOrder)
 			r.Get("/", orderHandler.ListOrders)
 			r.Get("/number/{orderNumber}", orderHandler.GetOrderByNumber)
 			r.Get("/{id}", orderHandler.GetOrder)
-			r.Put("/{id}/status", orderHandler.UpdateOrderStatus)
+			r.With(middleware.ValidateBody).Put("/{id}/status", orderHandler.UpdateOrderStatus)
 		})
 	})
 
