@@ -6,8 +6,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/kaulinmindiola/global-ecommerce-api/internal/metrics"
 	"github.com/kaulinmindiola/global-ecommerce-api/internal/middleware"
 	"github.com/kaulinmindiola/global-ecommerce-api/internal/service"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -21,9 +23,10 @@ type RouterDeps struct {
 	ProductService  service.ProductService
 	OrderService    service.OrderService
 
-	// Infrastructure — passed to health handler and rate limiter
-	DB    *pgxpool.Pool
-	Redis *redis.Client
+	// Infrastructure — passed to health handler, rate limiter, and metrics
+	DB      *pgxpool.Pool
+	Redis   *redis.Client
+	Metrics *metrics.Metrics // From v1: Support for Prometheus
 
 	// Build metadata — injected via ldflags in production
 	Version    string
@@ -35,36 +38,49 @@ type RouterDeps struct {
 // Route groups and middleware are applied here — nowhere else.
 //
 // Middleware stack order (top = outermost, applied first):
-//  1. RealIP   → Extracts true client IP (Critical for RateLimiter behind proxies)
-//  2. RequestID→ Generates trace ID before anything else logs
-//  3. Logger   → Logs request with IP and trace ID
-//  4. Recoverer→ Catches panics in all downstream code, returns 500
-//  5. Compress → Compresses responses before they reach the client
-//  6. CORS     → Sets headers before any handler can short-circuit
+//  1. RealIP            → Extracts true client IP (Critical for RateLimiter behind proxies)
+//  2. RequestID         → Generates trace ID before anything else logs
+//  3. Logger            → Logs request with IP and trace ID
+//  4. Recoverer         → Catches panics in all downstream code, returns 500
+//  5. PrometheusMetrics → Instruments every request for metrics
+//  6. Compress          → Compresses responses before they reach the client
+//  7. CORS              → Sets headers before any handler can short-circuit
 func NewRouter(deps RouterDeps) http.Handler {
 	r := chi.NewRouter()
 
 	// ── Global middleware stack ──────────────────────────────────────────
 	// Applied to every request regardless of route. Order is CRITICAL.
-	r.Use(chiMiddleware.RealIP)      // 1. Trust X-Forwarded-For
-	r.Use(middleware.RequestID)      // 2. Attach trace ID
-	r.Use(middleware.Logger)         // 3. Structured request logging
-	r.Use(middleware.Recovery)       // 4. Catch panics, return 500 cleanly
-	r.Use(chiMiddleware.Compress(5)) // 5. gzip compression level 5
-	r.Use(middleware.CORS)           // 6. CORS headers
+	r.Use(chiMiddleware.RealIP)                       // 1. Trust X-Forwarded-For
+	r.Use(middleware.RequestID)                       // 2. Attach trace ID
+	r.Use(middleware.Logger)                          // 3. Structured request logging
+	r.Use(middleware.Recovery)                        // 4. Catch panics, return 500 cleanly
+	r.Use(middleware.PrometheusMetrics(deps.Metrics)) // 5. Prometheus metrics
+	r.Use(chiMiddleware.Compress(5))                  // 6. gzip compression level 5
+	r.Use(middleware.CORS)                            // 7. CORS headers
 
 	// ── Handler instances ────────────────────────────────────────────────
-	healthHandler := NewHealthHandler(deps.DB, deps.Redis, deps.Version, deps.BuildDate, deps.CommitHash)
+	healthHandler := NewHealthHandler(
+		deps.DB, deps.Redis, deps.Metrics,
+		deps.Version, deps.BuildDate, deps.CommitHash,
+	)
 	authHandler := NewAuthHandler(deps.UserService, deps.AuthService)
 	userHandler := NewUserHandler(deps.UserService)
 	currencyHandler := NewCurrencyHandler(deps.CurrencyService)
 	productHandler := NewProductHandler(deps.ProductService)
 	orderHandler := NewOrderHandler(deps.OrderService)
 
+	// ── Prometheus scrape endpoint ───────────────────────────────────────
+	// Served at /metrics (no /api/v1 prefix) — standard Prometheus convention.
+	// No application middleware applied so scrapes are never rate-limited.
+	r.Handle("/metrics", promhttp.HandlerFor(
+		deps.Metrics.Registry(),
+		promhttp.HandlerOpts{EnableOpenMetrics: true},
+	))
+
 	// ── API v1 prefix ────────────────────────────────────────────────────
 	r.Route("/api/v1", func(r chi.Router) {
 
-		// ── Health & Version (public, no auth) ───────────────────────────
+		// ── Observability (public, no auth) ──────────────────────────────
 		r.Get("/health", healthHandler.Health)
 		r.Get("/version", healthHandler.Version)
 
