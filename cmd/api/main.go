@@ -1,3 +1,23 @@
+// @title           Global E-commerce Microservices API
+// @version         1.0.0
+// @description     A production-grade RESTful API for international e-commerce platforms with multi-currency support, timezone-aware operations, and enterprise-level architecture.
+// @termsOfService  https://github.com/kaulinmindiola/global-ecommerce-api
+
+// @contact.name    Kaulin Mindiola
+// @contact.email   kaulinmindiola@gmail.com
+// @contact.url     https://github.com/kaulinmindiola
+
+// @license.name    MIT
+// @license.url     https://opensource.org/licenses/MIT
+
+// @host            localhost:8080
+// @BasePath        /api/v1
+// @schemes         http https
+
+// @securityDefinitions.apikey BearerAuth
+// @in              header
+// @name            Authorization
+// @description     JWT Authorization header using the Bearer scheme. Example: "Bearer {token}"
 package main
 
 import (
@@ -8,9 +28,11 @@ import (
 	"syscall"
 
 	"github.com/joho/godotenv"
+	_ "github.com/kaulinmindiola/global-ecommerce-api/api/docs"
 	"github.com/kaulinmindiola/global-ecommerce-api/config"
 	"github.com/kaulinmindiola/global-ecommerce-api/internal/handler"
 	"github.com/kaulinmindiola/global-ecommerce-api/internal/infrastructure"
+	"github.com/kaulinmindiola/global-ecommerce-api/internal/metrics" // <-- NUEVA IMPORTACIÓN
 	repoPostgres "github.com/kaulinmindiola/global-ecommerce-api/internal/repository/postgres"
 	repoRedis "github.com/kaulinmindiola/global-ecommerce-api/internal/repository/redis"
 	"github.com/kaulinmindiola/global-ecommerce-api/internal/server"
@@ -101,6 +123,8 @@ func main() {
 	productSvc := service.NewProductService(productRepo, currencyRepo, cacheRepo, currencySvc)
 	orderSvc := service.NewOrderService(orderRepo, productRepo, userRepo, currencySvc, cacheRepo)
 
+	appMetrics := metrics.New()
+
 	// ── Step 5: Build the HTTP router ────────────────────────────────────
 	// NewRouter wires all handlers and middleware groups.
 	// All dependencies are injected here — no globals anywhere.
@@ -112,6 +136,7 @@ func main() {
 		OrderService:    orderSvc,
 		DB:              db,
 		Redis:           redisClient,
+		Metrics:         appMetrics,
 		Version:         cfg.App.Version,
 		BuildDate:       cfg.App.BuildDate,
 		CommitHash:      cfg.App.CommitHash,
