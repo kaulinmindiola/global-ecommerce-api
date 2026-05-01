@@ -291,3 +291,35 @@ clean:
 	@rm -rf bin/ $(COVERAGE_FILE) $(COVERAGE_HTML) api/docs/
 	@go clean -testcache -cache -modcache
 	@echo "$(COLOR_GREEN)✓ Cleaned$(COLOR_RESET)"
+
+# ==================================================================================== #
+# DOCUMENTATION COMMANDS
+# ==================================================================================== #
+
+.PHONY: swagger-init
+swagger-init:
+	@echo '$(CYAN)Initializing Swagger documentation...$(NC)'
+	@swag init \
+		-g cmd/api/main.go \
+		-o api/docs \
+		--parseDependency \
+		--parseInternal
+	@echo '$(GREEN)✓ Swagger docs generated in api/docs/$(NC)'
+
+.PHONY: swagger-validate
+swagger-validate: ## Validate OpenAPI spec
+	@echo '$(CYAN)Validating OpenAPI specification...$(NC)'
+	@docker run --rm \
+		-v $(PWD)/api/docs:/workspace \
+		openapitools/openapi-generator-cli:latest \
+		validate -i /workspace/swagger.yaml
+	@echo '$(GREEN)✓ OpenAPI spec is valid$(NC)'
+
+.PHONY: swagger-serve
+swagger-serve: swagger-init ## Generate docs and start server with Swagger UI
+	@echo '$(CYAN)Starting server with Swagger UI...$(NC)'
+	@echo '$(YELLOW)Swagger UI available at: $(GREEN)http://localhost:8080/swagger$(NC)'
+	@$(MAKE) run
+
+.PHONY: docs
+docs: swagger-init ## Alias for swagger-init
