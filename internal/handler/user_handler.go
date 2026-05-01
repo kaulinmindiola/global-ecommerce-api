@@ -27,8 +27,17 @@ func NewUserHandler(userService service.UserService) *UserHandler {
 // GET /api/v1/users/me
 // ─────────────────────────────────────────────
 
-// GetMe returns the authenticated user's profile.
-// Response: 200 OK
+// GetMe godoc
+// @Summary      Get current user profile
+// @Description  Retrieve the authenticated user's profile information based on their JWT token
+// @Tags         Users
+// @Security     BearerAuth
+// @Produce      json
+// @Success      200  {object}  service.UserResponse  "User profile"
+// @Failure      401  {object}  ErrorResponse         "Unauthorized - Invalid or missing token"
+// @Failure      404  {object}  ErrorResponse         "User not found"
+// @Failure      500  {object}  ErrorResponse         "Internal Server Error"
+// @Router       /users/me [get]
 func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	userID := userIDFromContext(r.Context())
 	if userID == uuid.Nil {
@@ -53,13 +62,24 @@ func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 // updateMeRequest is the partial-update JSON body for profile changes.
 // All fields are optional — only non-empty values are applied.
 type updateMeRequest struct {
-	FullName          string `json:"full_name"`
-	PreferredCurrency string `json:"preferred_currency"`
-	PreferredTimezone string `json:"preferred_timezone"`
+	FullName          string `json:"full_name" example:"John Doe"`
+	PreferredCurrency string `json:"preferred_currency" example:"EUR"`
+	PreferredTimezone string `json:"preferred_timezone" example:"Europe/Madrid"`
 }
 
-// UpdateMe modifies the authenticated user's profile.
-// Response: 200 OK
+// UpdateMe godoc
+// @Summary      Update user profile
+// @Description  Update authenticated user's profile information. All fields are optional (partial update).
+// @Tags         Users
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      handler.updateMeRequest  true  "Fields to update"
+// @Success      200      {object}  service.UserResponse     "User updated successfully"
+// @Failure      400      {object}  ErrorResponse            "Validation Error (e.g., Invalid JSON or Currency)"
+// @Failure      401      {object}  ErrorResponse            "Unauthorized"
+// @Failure      500      {object}  ErrorResponse            "Internal Server Error"
+// @Router       /users/me [put]
 func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	userID := userIDFromContext(r.Context())
 	if userID == uuid.Nil {
@@ -92,8 +112,16 @@ func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/v1/users/me
 // ─────────────────────────────────────────────
 
-// DeleteMe performs a soft-delete on the authenticated user's account.
-// Response: 204 No Content
+// DeleteMe godoc
+// @Summary      Delete user account
+// @Description  Perform a soft-delete on the authenticated user's account
+// @Tags         Users
+// @Security     BearerAuth
+// @Produce      json
+// @Success      204  "Account deleted successfully (No Content)"
+// @Failure      401  {object}  ErrorResponse  "Unauthorized"
+// @Failure      500  {object}  ErrorResponse  "Internal Server Error"
+// @Router       /users/me [delete]
 func (h *UserHandler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 	userID := userIDFromContext(r.Context())
 	if userID == uuid.Nil {
@@ -114,8 +142,19 @@ func (h *UserHandler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/users/{id}
 // ─────────────────────────────────────────────
 
-// GetByID retrieves any user's profile by UUID (admin endpoint).
-// Response: 200 OK
+// GetByID godoc
+// @Summary      Get user profile by ID (Admin)
+// @Description  Retrieve any user's profile by their UUID. Intended for administrative use.
+// @Tags         Users
+// @Security     BearerAuth
+// @Produce      json
+// @Param        id   path      string                true  "User UUID" format(uuid)
+// @Success      200  {object}  service.UserResponse  "User profile"
+// @Failure      400  {object}  ErrorResponse         "Validation Error (Invalid UUID format)"
+// @Failure      401  {object}  ErrorResponse         "Unauthorized"
+// @Failure      404  {object}  ErrorResponse         "User not found"
+// @Failure      500  {object}  ErrorResponse         "Internal Server Error"
+// @Router       /users/{id} [get]
 func (h *UserHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	idParam := chi.URLParam(r, "id")
 	userID, err := uuid.Parse(idParam)

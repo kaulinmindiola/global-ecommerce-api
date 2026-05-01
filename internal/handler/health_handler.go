@@ -65,14 +65,14 @@ type healthResponse struct {
 	Version   string                     `json:"version"`
 }
 
-// Health probes all dependencies and returns a structured health report.
-//
-// Response codes:
-//   - 200 OK          — all dependencies are reachable
-//   - 503 Unavailable — one or more dependencies are down
-//
-// Probe timeout is 3 seconds per dependency to prevent the health endpoint
-// itself from becoming slow under partial outage.
+// Health godoc
+// @Summary      Health check
+// @Description  Check if the API and its dependencies (database, redis) are operational with detailed metrics
+// @Tags         Health
+// @Produce      json
+// @Success      200  {object}  healthResponse  "System is healthy"
+// @Failure      503  {object}  healthResponse  "System is degraded or unhealthy"
+// @Router       /api/v1/health [get]
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
@@ -168,8 +168,13 @@ type versionResponse struct {
 	GoVersion  string `json:"go_version"`
 }
 
-// Version returns build metadata for observability and deployment tracking.
-// This endpoint is always 200 — it does not probe dependencies.
+// Version godoc
+// @Summary      Get API version
+// @Description  Returns API version, build date and commit hash
+// @Tags         Health
+// @Produce      json
+// @Success      200  {object}  versionResponse
+// @Router       /api/v1/version [get]
 func (h *HealthHandler) Version(w http.ResponseWriter, r *http.Request) {
 	successResponse(w, http.StatusOK, versionResponse{
 		Version:    h.version,

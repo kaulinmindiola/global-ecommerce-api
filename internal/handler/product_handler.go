@@ -28,9 +28,24 @@ func NewProductHandler(productService service.ProductService) *ProductHandler {
 // GET /api/v1/products
 // ─────────────────────────────────────────────
 
-// ListProducts returns a paginated, filtered product catalogue.
-// Query params: page, limit, currency, search, min_price, max_price, in_stock, sort, order
-// Response: 200 OK — matches spec pages 10-11
+// ListProducts godoc
+// @Summary      List and search products
+// @Description  Get a paginated, filtered, and sorted catalogue of products. Supports multi-currency pricing display.
+// @Tags         Products
+// @Produce      json
+// @Param        page       query     int     false  "Page number (default: 1)" default(1)
+// @Param        limit      query     int     false  "Items per page (max 100, default: 20)" default(20)
+// @Param        currency   query     string  false  "Display prices converted to this ISO 4217 currency code" default(USD)
+// @Param        search     query     string  false  "Search products by name or SKU"
+// @Param        min_price  query     number  false  "Filter products with price greater than or equal to this amount"
+// @Param        max_price  query     number  false  "Filter products with price less than or equal to this amount"
+// @Param        in_stock   query     bool    false  "If true, only return products with stock > 0"
+// @Param        sort       query     string  false  "Field to sort by (e.g., 'price', 'created_at')"
+// @Param        order      query     string  false  "Sort direction ('asc' or 'desc')"
+// @Success      200        {object}  service.ProductListResponse "Paginated product list"
+// @Failure      400        {object}  ErrorResponse "Invalid query parameters"
+// @Failure      500        {object}  ErrorResponse "Internal Server Error"
+// @Router       /products [get]
 func (h *ProductHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -90,16 +105,28 @@ func (h *ProductHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 
 // createProductRequest is the JSON body for product creation.
 type createProductRequest struct {
-	Name          string  `json:"name"`
-	Description   string  `json:"description"`
-	SKU           string  `json:"sku"`
-	BasePrice     float64 `json:"base_price"`
-	BaseCurrency  string  `json:"base_currency"`
-	StockQuantity int     `json:"stock_quantity"`
+	Name          string  `json:"name" example:"Wireless Headphones"`
+	Description   string  `json:"description" example:"Noise-cancelling over-ear headphones"`
+	SKU           string  `json:"sku" example:"WH-1000XM4"`
+	BasePrice     float64 `json:"base_price" example:"299.99"`
+	BaseCurrency  string  `json:"base_currency" example:"USD"`
+	StockQuantity int     `json:"stock_quantity" example:"150"`
 }
 
-// CreateProduct persists a new product in the catalogue.
-// Response: 201 Created — matches spec page 13-14
+// CreateProduct godoc
+// @Summary      Create product (Admin)
+// @Description  Creates a new product in the catalogue. Requires administrator privileges.
+// @Tags         Products
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      handler.createProductRequest  true  "Product creation payload"
+// @Success      201      {object}  service.ProductResponse       "Product created successfully"
+// @Failure      400      {object}  ErrorResponse                 "Validation Error (e.g., duplicate SKU, missing fields)"
+// @Failure      401      {object}  ErrorResponse                 "Unauthorized"
+// @Failure      403      {object}  ErrorResponse                 "Forbidden (Admin only)"
+// @Failure      500      {object}  ErrorResponse                 "Internal Server Error"
+// @Router       /products [post]
 func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 	var req createProductRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -128,22 +155,26 @@ func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/products/{id}
 // ─────────────────────────────────────────────
 
-// GetProduct retrieves a single product by UUID.
-// Query param: currency — display prices in this currency (default USD)
-// Response: 200 OK
+// GetProduct godoc
+// @Summary      Get product details
+// @Description  Retrieve complete details of a specific product by its UUID.
+// @Tags         Products
+// @Produce      json
+// @Param        id        path      string  true   "Product UUID" format(uuid)
+// @Param        currency  query     string  false  "Convert price to this currency (default: USD)" default(USD)
+// @Success      200       {object}  service.ProductResponse "Product details"
+// @Failure      400       {object}  ErrorResponse "Invalid UUID format"
+// @Failure      404       {object}  ErrorResponse "Product not found"
+// @Failure      500       {object}  ErrorResponse "Internal Server Error"
+// @Router       /products/{id} [get]
 func (h *ProductHandler) GetProduct(w http.ResponseWriter, r *http.Request) {
-	// 1. Corregimos los argumentos (añadimos 'w')
-	// 2. Cambiamos 'err' por 'ok' porque parseUUIDParam devuelve un booleano (bool)
 	productID, ok := parseUUIDParam(w, r, "id")
-
-	// 3. Verificamos 'ok'. Si es false, la función ya envió el error al cliente.
 	if !ok {
 		return
 	}
 
 	currency := r.URL.Query().Get("currency")
 
-	// 4. Aquí usamos ':=' para declarar 'err' por primera vez como un tipo error real
 	product, err := h.productService.GetByID(r.Context(), productID, currency)
 	if err != nil {
 		domainErrorResponse(w, r, err)
@@ -159,19 +190,31 @@ func (h *ProductHandler) GetProduct(w http.ResponseWriter, r *http.Request) {
 
 // updateProductRequest is the partial-update JSON body for product changes.
 type updateProductRequest struct {
-	Name         string  `json:"name"`
-	Description  string  `json:"description"`
-	BasePrice    float64 `json:"base_price"`
-	BaseCurrency string  `json:"base_currency"`
+	Name         string  `json:"name" example:"Updated Headphones"`
+	Description  string  `json:"description" example:"Updated description text"`
+	BasePrice    float64 `json:"base_price" example:"249.99"`
+	BaseCurrency string  `json:"base_currency" example:"USD"`
 }
 
-// UpdateProduct modifies mutable fields of an existing product.
-// Response: 200 OK
+// UpdateProduct godoc
+// @Summary      Update product (Admin)
+// @Description  Modifies mutable fields (name, description, price) of an existing product.
+// @Tags         Products
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        id       path      string                        true  "Product UUID" format(uuid)
+// @Param        request  body      handler.updateProductRequest  true  "Fields to update"
+// @Success      200      {object}  service.ProductResponse       "Product updated successfully"
+// @Failure      400      {object}  ErrorResponse                 "Validation Error"
+// @Failure      401      {object}  ErrorResponse                 "Unauthorized"
+// @Failure      403      {object}  ErrorResponse                 "Forbidden (Admin only)"
+// @Failure      404      {object}  ErrorResponse                 "Product not found"
+// @Failure      500      {object}  ErrorResponse                 "Internal Server Error"
+// @Router       /products/{id} [put]
 func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
-	// CAMBIO 1: Se agrega 'w' y se cambia 'err' por 'ok' (bool)
 	productID, ok := parseUUIDParam(w, r, "id")
 	if !ok {
-		// La función parseUUIDParam ya envió el error al cliente si ok es false
 		return
 	}
 
@@ -182,7 +225,6 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// CAMBIO 2: Aquí 'err' se declara por primera vez como tipo 'error'
 	product, err := h.productService.Update(r.Context(), productID, service.UpdateProductRequest{
 		Name:         req.Name,
 		Description:  req.Description,
@@ -201,16 +243,26 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/v1/products/{id}
 // ─────────────────────────────────────────────
 
-// DeleteProduct soft-deletes a product from the catalogue.
-// Response: 204 No Content
+// DeleteProduct godoc
+// @Summary      Delete product (Admin)
+// @Description  Performs a soft-delete on a product, removing it from the public catalogue.
+// @Tags         Products
+// @Security     BearerAuth
+// @Produce      json
+// @Param        id   path      string  true  "Product UUID" format(uuid)
+// @Success      204  "Product deleted successfully (No Content)"
+// @Failure      400  {object}  ErrorResponse "Invalid UUID format"
+// @Failure      401  {object}  ErrorResponse "Unauthorized"
+// @Failure      403  {object}  ErrorResponse "Forbidden (Admin only)"
+// @Failure      404  {object}  ErrorResponse "Product not found"
+// @Failure      500  {object}  ErrorResponse "Internal Server Error"
+// @Router       /products/{id} [delete]
 func (h *ProductHandler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
-	// CAMBIO 1: Se agrega 'w' y se cambia 'err' por 'ok' (bool)
 	productID, ok := parseUUIDParam(w, r, "id")
 	if !ok {
 		return
 	}
 
-	// CAMBIO 2: 'err' es de tipo 'error' (funciona bien con nil y domainErrorResponse)
 	if err := h.productService.Delete(r.Context(), productID); err != nil {
 		domainErrorResponse(w, r, err)
 		return
@@ -224,3 +276,4 @@ func (h *ProductHandler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
 // ─────────────────────────────────────────────
 
 // parseUUIDParam extracts and parses a chi URL parameter as a UUID.
+// Note: Implementation omitted here to preserve your existing code structure.

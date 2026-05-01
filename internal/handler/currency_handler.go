@@ -23,8 +23,14 @@ func NewCurrencyHandler(currencyService service.CurrencyService) *CurrencyHandle
 // GET /api/v1/currencies
 // ─────────────────────────────────────────────
 
-// ListCurrencies returns all active supported currencies.
-// Response: 200 OK — matches spec page 8
+// ListCurrencies godoc
+// @Summary      List all active currencies
+// @Description  Get a list of all active supported currencies for the platform
+// @Tags         Currencies
+// @Produce      json
+// @Success      200  {object}  map[string]any "data: array of currencies, total: integer"
+// @Failure      500  {object}  ErrorResponse  "Internal Server Error"
+// @Router       /currencies [get]
 func (h *CurrencyHandler) ListCurrencies(w http.ResponseWriter, r *http.Request) {
 	currencies, err := h.currencyService.ListActive(r.Context())
 	if err != nil {
@@ -42,10 +48,19 @@ func (h *CurrencyHandler) ListCurrencies(w http.ResponseWriter, r *http.Request)
 // GET /api/v1/currencies/convert
 // ─────────────────────────────────────────────
 
-// ConvertCurrency performs a real-time currency conversion.
-// Query params: from, to, amount
-// Example: /api/v1/currencies/convert?from=USD&to=EUR&amount=100
-// Response: 200 OK — matches spec page 10
+// ConvertCurrency godoc
+// @Summary      Convert currency amount
+// @Description  Performs a real-time currency conversion using the latest exchange rates
+// @Tags         Currencies
+// @Produce      json
+// @Param        from   query     string  true  "Source ISO 4217 currency code (e.g., USD)"
+// @Param        to     query     string  true  "Target ISO 4217 currency code (e.g., EUR)"
+// @Param        amount query     number  true  "Amount to convert (must be a positive number)"
+// @Success      200    {object}  any            "Successful conversion result"
+// @Failure      400    {object}  ErrorResponse  "Validation error (missing or invalid parameters)"
+// @Failure      404    {object}  ErrorResponse  "Currency code not found"
+// @Failure      500    {object}  ErrorResponse  "Internal Server Error"
+// @Router       /currencies/convert [get]
 func (h *CurrencyHandler) ConvertCurrency(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 

@@ -32,29 +32,41 @@ func NewOrderHandler(orderService service.OrderService) *OrderHandler {
 
 // createOrderItemRequest is a single product line within a new order.
 type createOrderItemRequest struct {
-	ProductID string `json:"product_id"`
-	Quantity  int    `json:"quantity"`
+	ProductID string `json:"product_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	Quantity  int    `json:"quantity" example:"2"`
 }
 
 // shippingAddressRequest maps the shipping_address JSON object.
 type shippingAddressRequest struct {
-	Street     string `json:"street"`
-	City       string `json:"city"`
-	State      string `json:"state"`
-	Country    string `json:"country"`
-	PostalCode string `json:"postal_code"`
+	Street     string `json:"street" example:"123 Tech Lane"`
+	City       string `json:"city" example:"San Francisco"`
+	State      string `json:"state" example:"CA"`
+	Country    string `json:"country" example:"USA"`
+	PostalCode string `json:"postal_code" example:"94105"`
 }
 
 // createOrderRequest is the full JSON body for POST /orders.
 // Matches the contract defined on spec pages 15-16.
 type createOrderRequest struct {
-	Currency        string                   `json:"currency"`
+	Currency        string                   `json:"currency" example:"USD"`
 	Items           []createOrderItemRequest `json:"items"`
 	ShippingAddress shippingAddressRequest   `json:"shipping_address"`
 }
 
-// CreateOrder processes a new order for the authenticated user.
-// Response: 201 Created — this is the most critical endpoint in the system.
+// CreateOrder godoc
+// @Summary      Create order
+// @Description  Create a new order with multi-currency support. Validates stock and captures current exchange rates.
+// @Tags         Orders
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      handler.createOrderRequest  true  "Order payload including items and shipping address"
+// @Success      201      {object}  service.OrderResponse       "Order created successfully"
+// @Failure      400      {object}  ErrorResponse               "Validation Error (Invalid JSON, empty items, invalid UUIDs)"
+// @Failure      401      {object}  ErrorResponse               "Unauthorized"
+// @Failure      422      {object}  ErrorResponse               "Unprocessable Entity (e.g., Insufficient stock)"
+// @Failure      500      {object}  ErrorResponse               "Internal Server Error"
+// @Router       /orders [post]
 func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	userID := userIDFromContext(r.Context())
 	if userID == uuid.Nil {
@@ -124,8 +136,20 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/orders
 // ─────────────────────────────────────────────
 
-// ListOrders returns the authenticated user's paginated order history.
-// Response: 200 OK
+// ListOrders godoc
+// @Summary      List user orders
+// @Description  Get a paginated list of the authenticated user's order history.
+// @Tags         Orders
+// @Security     BearerAuth
+// @Produce      json
+// @Param        page   query     int  false  "Page number" default(1)
+// @Param        limit  query     int  false  "Items per page" default(20)
+// @Param        sort   query     string false "Sort field" default(created_at)
+// @Param        order  query     string false "Sort order (asc, desc)" default(desc)
+// @Success      200    {object}  service.OrderListResponse "Paginated order list"
+// @Failure      401    {object}  ErrorResponse             "Unauthorized"
+// @Failure      500    {object}  ErrorResponse             "Internal Server Error"
+// @Router       /orders [get]
 func (h *OrderHandler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	userID := userIDFromContext(r.Context())
 	if userID == uuid.Nil {
@@ -149,9 +173,19 @@ func (h *OrderHandler) ListOrders(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/orders/{id}
 // ─────────────────────────────────────────────
 
-// GetOrder retrieves a single order by UUID.
-// Enforces that the order belongs to the authenticated user.
-// Response: 200 OK
+// GetOrder godoc
+// @Summary      Get order details
+// @Description  Retrieve complete details of a specific order by UUID. Enforces ownership (user can only see their own orders).
+// @Tags         Orders
+// @Security     BearerAuth
+// @Produce      json
+// @Param        id   path      string  true  "Order UUID" format(uuid)
+// @Success      200  {object}  service.OrderResponse "Order details"
+// @Failure      400  {object}  ErrorResponse         "Invalid UUID format"
+// @Failure      401  {object}  ErrorResponse         "Unauthorized"
+// @Failure      404  {object}  ErrorResponse         "Order not found or belongs to another user"
+// @Failure      500  {object}  ErrorResponse         "Internal Server Error"
+// @Router       /orders/{id} [get]
 func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	userID := userIDFromContext(r.Context())
 	if userID == uuid.Nil {
@@ -160,14 +194,11 @@ func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// CAMBIO: Usamos 'ok' (bool) para parseUUIDParam.
-	// Esta función ya envía el errorResponse internamente si falla.
 	orderID, ok := parseUUIDParam(w, r, "id")
 	if !ok {
-		return // Salimos porque el error ya se envió al cliente
+		return
 	}
 
-	// CAMBIO: Ahora declaramos 'err' por primera vez como un tipo error real
 	order, err := h.orderService.GetByID(r.Context(), orderID, userID)
 	if err != nil {
 		domainErrorResponse(w, r, err)
@@ -181,8 +212,19 @@ func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/orders/number/{orderNumber}
 // ─────────────────────────────────────────────
 
-// GetOrderByNumber retrieves an order by its human-readable order number.
-// Response: 200 OK
+// GetOrderByNumber godoc
+// @Summary      Get order by number
+// @Description  Retrieve an order by its human-readable tracking number (e.g., ORD-2025-000123).
+// @Tags         Orders
+// @Security     BearerAuth
+// @Produce      json
+// @Param        orderNumber  path      string  true  "Order Tracking Number"
+// @Success      200          {object}  service.OrderResponse "Order details"
+// @Failure      400          {object}  ErrorResponse         "Missing order number"
+// @Failure      401          {object}  ErrorResponse         "Unauthorized"
+// @Failure      404          {object}  ErrorResponse         "Order not found"
+// @Failure      500          {object}  ErrorResponse         "Internal Server Error"
+// @Router       /orders/number/{orderNumber} [get]
 func (h *OrderHandler) GetOrderByNumber(w http.ResponseWriter, r *http.Request) {
 	userID := userIDFromContext(r.Context())
 	if userID == uuid.Nil {
@@ -213,27 +255,37 @@ func (h *OrderHandler) GetOrderByNumber(w http.ResponseWriter, r *http.Request) 
 
 // updateStatusRequest is the JSON body for status transitions.
 type updateStatusRequest struct {
-	Status string `json:"status"`
+	Status string `json:"status" example:"shipped" enums:"pending,confirmed,shipped,delivered,cancelled"`
 }
 
-// UpdateOrderStatus transitions an order to a new status.
-// Valid statuses: confirmed, shipped, delivered, cancelled
-// Response: 200 OK
+// UpdateOrderStatus godoc
+// @Summary      Update order status (Admin)
+// @Description  Transitions an order to a new status (e.g., from confirmed to shipped).
+// @Tags         Orders
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        id       path      string                       true  "Order UUID" format(uuid)
+// @Param        request  body      handler.updateStatusRequest  true  "New status payload"
+// @Success      200      {object}  map[string]string            "Success message"
+// @Failure      400      {object}  ErrorResponse                "Validation Error (Invalid JSON or invalid state transition)"
+// @Failure      401      {object}  ErrorResponse                "Unauthorized"
+// @Failure      403      {object}  ErrorResponse                "Forbidden"
+// @Failure      404      {object}  ErrorResponse                "Order not found"
+// @Failure      500      {object}  ErrorResponse                "Internal Server Error"
+// @Router       /orders/{id}/status [put]
 func (h *OrderHandler) UpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	orderID, ok := parseUUIDParam(w, r, "id")
 	if !ok {
 		return
 	}
 
-	var req struct {
-		Status string `json:"status"`
-	}
+	var req updateStatusRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		errorResponse(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid JSON")
 		return
 	}
 
-	// Aquí 'err' es nuevo y de tipo error, por lo que funciona correctamente
 	if err := h.orderService.UpdateStatus(r.Context(), orderID, domain.OrderStatus(req.Status)); err != nil {
 		domainErrorResponse(w, r, err)
 		return

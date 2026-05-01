@@ -11,10 +11,10 @@ import (
 	"github.com/kaulinmindiola/global-ecommerce-api/internal/service"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 // RouterDeps holds all application dependencies needed to wire the HTTP router.
-// Using a single struct keeps NewRouter's signature clean and extensible.
 type RouterDeps struct {
 	// Services
 	UserService     service.UserService
@@ -23,33 +23,22 @@ type RouterDeps struct {
 	ProductService  service.ProductService
 	OrderService    service.OrderService
 
-	// Infrastructure — passed to health handler, rate limiter, and metrics
+	// Infrastructure
 	DB      *pgxpool.Pool
 	Redis   *redis.Client
-	Metrics *metrics.Metrics // From v1: Support for Prometheus
+	Metrics *metrics.Metrics
 
-	// Build metadata — injected via ldflags in production
+	// Build metadata
 	Version    string
 	BuildDate  string
 	CommitHash string
 }
 
 // NewRouter builds and returns the fully configured Chi router.
-// Route groups and middleware are applied here — nowhere else.
-//
-// Middleware stack order (top = outermost, applied first):
-//  1. RealIP            → Extracts true client IP (Critical for RateLimiter behind proxies)
-//  2. RequestID         → Generates trace ID before anything else logs
-//  3. Logger            → Logs request with IP and trace ID
-//  4. Recoverer         → Catches panics in all downstream code, returns 500
-//  5. PrometheusMetrics → Instruments every request for metrics
-//  6. Compress          → Compresses responses before they reach the client
-//  7. CORS              → Sets headers before any handler can short-circuit
 func NewRouter(deps RouterDeps) http.Handler {
 	r := chi.NewRouter()
 
 	// ── Global middleware stack ──────────────────────────────────────────
-	// Applied to every request regardless of route. Order is CRITICAL.
 	r.Use(chiMiddleware.RealIP)                       // 1. Trust X-Forwarded-For
 	r.Use(middleware.RequestID)                       // 2. Attach trace ID
 	r.Use(middleware.Logger)                          // 3. Structured request logging
@@ -70,11 +59,20 @@ func NewRouter(deps RouterDeps) http.Handler {
 	orderHandler := NewOrderHandler(deps.OrderService)
 
 	// ── Prometheus scrape endpoint ───────────────────────────────────────
-	// Served at /metrics (no /api/v1 prefix) — standard Prometheus convention.
-	// No application middleware applied so scrapes are never rate-limited.
 	r.Handle("/metrics", promhttp.HandlerFor(
 		deps.Metrics.Registry(),
 		promhttp.HandlerOpts{EnableOpenMetrics: true},
+	))
+
+	// ── Swagger UI (API Documentation) ───────────────────────────────────
+	// Redirigir la ruta base a la interfaz HTML para mejor DX
+	r.Get("/swagger", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/swagger/index.html", http.StatusMovedPermanently)
+	})
+
+	// Servir los archivos estáticos generados por Swag apuntando explícitamente al JSON
+	r.Get("/swagger/*", httpSwagger.Handler(
+		httpSwagger.URL("/swagger/doc.json"),
 	))
 
 	// ── API v1 prefix ────────────────────────────────────────────────────
@@ -86,7 +84,6 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 		// ── Authentication (public) ──────────────────────────────────────
 		r.Route("/auth", func(r chi.Router) {
-			// ValidateBody applied strictly to endpoints expecting JSON payloads
 			r.With(middleware.ValidateBody).Post("/register", authHandler.Register)
 			r.With(middleware.ValidateBody).Post("/login", authHandler.Login)
 			r.Post("/logout", authHandler.Logout)
@@ -100,8 +97,6 @@ func NewRouter(deps RouterDeps) http.Handler {
 		})
 
 		// ── Products ─────────────────────────────────────────────────────
-		// GET endpoints are public — browsing does not require authentication.
-		// Write endpoints require valid JWT and Rate Limiting.
 		r.Route("/products", func(r chi.Router) {
 			r.Get("/", productHandler.ListProducts)
 			r.Get("/{id}", productHandler.GetProduct)
@@ -116,7 +111,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			})
 		})
 
-		// ── Users (all routes require auth + rate limit) ─────────────────
+		// ── Users ────────────────────────────────────────────────────────
 		r.Route("/users", func(r chi.Router) {
 			r.Use(middleware.Authenticate(deps.AuthService))
 			r.Use(middleware.RateLimit(deps.Redis))
@@ -124,10 +119,10 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Get("/me", userHandler.GetMe)
 			r.With(middleware.ValidateBody).Put("/me", userHandler.UpdateMe)
 			r.Delete("/me", userHandler.DeleteMe)
-			r.Get("/{id}", userHandler.GetByID) // admin endpoint
+			r.Get("/{id}", userHandler.GetByID)
 		})
 
-		// ── Orders (all routes require auth + rate limit) ────────────────
+		// ── Orders ───────────────────────────────────────────────────────
 		r.Route("/orders", func(r chi.Router) {
 			r.Use(middleware.Authenticate(deps.AuthService))
 			r.Use(middleware.RateLimit(deps.Redis))
