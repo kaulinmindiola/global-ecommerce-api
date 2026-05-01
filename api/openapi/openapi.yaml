@@ -3,23 +3,51 @@ openapi: 3.0.3
 info:
   title: Global E-commerce Microservices API
   description: |
-    A production-grade RESTful API for international e-commerce platforms with multi-currency support and timezone-aware operations.
+    # 🌍 Global E-commerce API
 
-    ## Key Features
-    - Multi-currency pricing with real-time conversion
-    - Timezone-aware operations (UTC-based)
-    - JWT authentication
-    - Redis caching layer
-    - Clean Architecture implementation
+    A production-grade RESTful API for international e-commerce platforms with **multi-currency support** and **timezone-aware operations**.
 
-    ## Architecture
-    This API follows Clean Architecture principles with clear separation of concerns:
-    - Domain Layer: Core business entities
-    - Application Layer: Business logic and use cases
-    - Infrastructure Layer: Database, cache, and HTTP
+    ## 🔑 Key Features
+    - ✅ Multi-currency pricing with real-time conversion
+    - ✅ Timezone-aware operations (UTC-based)
+    - ✅ JWT authentication with Bearer token
+    - ✅ Redis caching layer for performance
+    - ✅ Clean Architecture implementation
+    - ✅ Comprehensive error handling
+    - ✅ Request ID tracking for distributed tracing
 
-    ## Authentication
-    Most endpoints require JWT Bearer token authentication. Obtain a token via `/auth/login` or `/auth/register`.
+    ### 🏗️ Architecture
+    This API follows **Clean Architecture** principles:
+    - **Domain Layer**: Core business entities
+    - **Application Layer**: Business logic and use cases
+    - **Infrastructure Layer**: Database, cache, and HTTP
+
+    ## 🔐 Authentication
+    Most endpoints require **JWT Bearer token** authentication.
+
+    **To authenticate:**
+    1. Register via `POST /auth/register` or login via `POST /auth/login`
+    2. Copy the `access_token` from the response
+    3. Click the **Authorize** button (🔒) above
+    4. Enter: `Bearer <your_access_token>`
+    5. Click **Authorize**
+
+    Now you can test protected endpoints! 🎉
+
+    ## 🌐 Multi-Currency Support
+    - All product prices can be converted to any supported currency
+    - Exchange rates are tracked historically for audit compliance
+    - Orders store exchange rate snapshots for financial accuracy
+
+    ## 📊 Pagination
+    List endpoints support pagination with query parameters:
+    - `page`: Page number (default: 1)
+    - `limit`: Items per page (default: 20, max: 100)
+
+    ## 🔗 Links
+    - **GitHub**: https://github.com/kaulinmindiola/global-ecommerce-api
+    - **Documentation**: https://github.com/kaulinmindiola/global-ecommerce-api/blob/main/README.md
+    - **Author**: [Kaulin Mindiola](https://github.com/kaulinmindiola)
 
   version: 1.0.0
   contact:
@@ -31,10 +59,10 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: http://localhost:8000/api/v1
+  - url: http://localhost:8080/api/v1
     description: Local development server
-  - url: https://api.ecommerce.example.com/api/v1
-    description: Production server (future)
+  - url: https://global-ecommerce-api.up.railway.app/api/v1
+    description: Production server (Railway)
 
 tags:
   - name: Health
