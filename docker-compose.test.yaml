@@ -1,0 +1,134 @@
+# ==============================================================================
+# DOCKER COMPOSE - TEST STACK
+# Purpose: Isolated environment for running tests (CI/CD and local)
+#
+# Usage:
+#   docker-compose -f docker-compose.test.yaml up -d
+#   make test-docker
+#   docker-compose -f docker-compose.test.yaml down -v
+# ==============================================================================
+
+services:
+  # ============================================================================
+  # TEST RUNNER - Executes the test suite
+  # ============================================================================
+  test-runner:
+    build:
+      context: .
+      dockerfile: deployments/docker/Dockerfile.dev
+    container_name: ecommerce-test-runner
+
+    environment:
+      APP_ENV: test
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: ecommerce_test
+      POSTGRES_SSLMODE: disable
+      REDIS_HOST: redis-test
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: test_redis_pass
+      JWT_SECRET: test-jwt-secret-key-minimum-32-characters-long
+      LOG_LEVEL: error
+      LOG_FORMAT: json
+
+    volumes:
+      - .:/app
+      - go-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+
+    # Run tests and generate coverage report
+    command: >
+      sh -c "
+        echo '⏳ Waiting for services...' &&
+        sleep 5 &&
+        echo '🔄 Running migrations...' &&
+        migrate -path database/migrations
+          -database 'postgres://test_user:test_password@postgres-test:5432/ecommerce_test?sslmode=disable'
+          up &&
+        echo '🧪 Running unit tests...' &&
+        go test -v -race
+          -coverprofile=/app/coverage.out
+          -covermode=atomic
+          -short
+          ./internal/... ./pkg/... &&
+        echo '🔗 Running integration tests...' &&
+        go test -v -race
+          -coverprofile=/app/coverage-integration.out
+          -covermode=atomic
+          -run Integration
+          ./tests/integration/... &&
+        echo '✅ All tests passed!'
+      "
+
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+
+    networks:
+      - test-network
+
+  # ============================================================================
+  # POSTGRES TEST - Isolated test database
+  # ============================================================================
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: ecommerce-postgres-test
+
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: ecommerce_test
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+      TZ: UTC
+
+    # Use tmpfs for speed (data doesn't need to persist)
+    tmpfs:
+      - /var/lib/postgresql/data:size=512m
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d ecommerce_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+    networks:
+      - test-network
+
+  # ============================================================================
+  # REDIS TEST - Isolated test cache
+  # ============================================================================
+  redis-test:
+    image: redis:7-alpine
+    container_name: ecommerce-redis-test
+
+    command: >
+      redis-server
+      --requirepass test_redis_pass
+      --appendonly no
+      --save ""
+
+    # Use tmpfs for speed
+    tmpfs:
+      - /data:size=64m
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "test_redis_pass", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+    networks:
+      - test-network
+
+volumes:
+  go-cache:
+  go-build-cache:
+
+networks:
+  test-network:
+    driver: bridge
