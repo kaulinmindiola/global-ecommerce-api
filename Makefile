@@ -18,10 +18,10 @@ BUILD_DATE    := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 COMMIT_HASH   := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 LDFLAGS := -ldflags "\
-	-w -s \
-	-X main.version=$(VERSION) \
-	-X main.buildDate=$(BUILD_DATE) \
-	-X main.commitHash=$(COMMIT_HASH)"
+    -w -s \
+    -X main.version=$(VERSION) \
+    -X main.buildDate=$(BUILD_DATE) \
+    -X main.commitHash=$(COMMIT_HASH)"
 
 # Colors for output
 COLOR_RESET  := \033[0m
@@ -282,6 +282,91 @@ docker-down:
 	@docker compose down -v --rmi local
 	@echo "$(COLOR_GREEN)✓ Docker resources cleaned$(COLOR_RESET)"
 
+# ==================================================================================== #
+# DOCKER PRODUCTION COMMANDS
+# ==================================================================================== #
+
+PROD_COMPOSE = docker compose -f docker-compose.prod.yaml
+TEST_COMPOSE = docker compose -f docker-compose.test.yaml
+IMAGE_NAME   := global-ecommerce-api
+IMAGE_REPO   := ghcr.io/kaulinmindiola/$(IMAGE_NAME)
+IMAGE_TAG    := $(shell git describe --tags --always --dirty)
+
+.PHONY: docker-build-prod
+docker-build-prod: ## Build production Docker image
+	@echo '$(COLOR_CYAN)Building production image...$(COLOR_RESET)'
+	@chmod +x scripts/docker/build.sh
+	@./scripts/docker/build.sh
+	@echo '$(COLOR_GREEN)✓ Production image built$(COLOR_RESET)'
+
+.PHONY: docker-build-push
+docker-build-push: ## Build and push production image to registry
+	@echo '$(COLOR_CYAN)Building and pushing production image...$(COLOR_RESET)'
+	@./scripts/docker/build.sh --push
+	@echo '$(COLOR_GREEN)✓ Image pushed to registry$(COLOR_RESET)'
+
+.PHONY: docker-build-scan
+docker-build-scan: ## Build production image and run security scan
+	@echo '$(COLOR_CYAN)Building and scanning production image...$(COLOR_RESET)'
+	@./scripts/docker/build.sh --scan
+	@echo '$(COLOR_GREEN)✓ Build and scan complete$(COLOR_RESET)'
+
+.PHONY: docker-prod-up
+docker-prod-up: ## Start production stack
+	@echo '$(COLOR_CYAN)Starting production stack...$(COLOR_RESET)'
+	@$(PROD_COMPOSE) up -d
+	@echo '$(COLOR_GREEN)✓ Production stack started$(COLOR_RESET)'
+	@echo '$(COLOR_YELLOW)  • API:    http://localhost:80$(COLOR_RESET)'
+	@echo '$(COLOR_YELLOW)  • HTTPS:  https://localhost:443$(COLOR_RESET)'
+
+.PHONY: docker-prod-down
+docker-prod-down: ## Stop production stack
+	@echo '$(COLOR_CYAN)Stopping production stack...$(COLOR_RESET)'
+	@$(PROD_COMPOSE) down
+	@echo '$(COLOR_GREEN)✓ Production stack stopped$(COLOR_RESET)'
+
+.PHONY: docker-prod-logs
+docker-prod-logs: ## Show production logs
+	@$(PROD_COMPOSE) logs -f
+
+.PHONY: docker-prod-ps
+docker-prod-ps: ## Show production container status
+	@$(PROD_COMPOSE) ps
+
+.PHONY: docker-test
+docker-test: ## Run tests in Docker (isolated environment)
+	@echo '$(COLOR_CYAN)Running tests in Docker...$(COLOR_RESET)'
+	@$(TEST_COMPOSE) up --build --abort-on-container-exit test-runner
+	@$(TEST_COMPOSE) down -v
+	@echo '$(COLOR_GREEN)✓ Docker tests complete$(COLOR_RESET)'
+
+.PHONY: docker-image-size
+docker-image-size: ## Check production image size
+	@echo '$(COLOR_CYAN)Production image size:$(COLOR_RESET)'
+	@docker image ls $(IMAGE_REPO) --format "table {{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
+
+.PHONY: docker-image-inspect
+docker-image-inspect: ## Inspect production image layers
+	@echo '$(COLOR_CYAN)Image layer analysis:$(COLOR_RESET)'
+	@docker history $(IMAGE_REPO):$(IMAGE_TAG) --human --format \
+    "table {{.CreatedBy}}\t{{.Size}}"
+
+.PHONY: docker-trivy-scan
+docker-trivy-scan: ## Run Trivy security scan on production image
+	@echo '$(COLOR_CYAN)Running Trivy security scan...$(COLOR_RESET)'
+	@docker run --rm \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		aquasec/trivy:latest image \
+		--severity HIGH,CRITICAL \
+		--ignore-unfixed \
+		$(IMAGE_REPO):$(IMAGE_TAG)
+	@echo '$(COLOR_GREEN)✓ Security scan complete$(COLOR_RESET)'
+
+.PHONY: docker-dev
+docker-dev: ## Start development with hot reload (Air)
+	@echo '$(COLOR_CYAN)Starting development with hot reload...$(COLOR_RESET)'
+	@docker compose -f docker-compose.yaml up --build api-dev
+
 
 ## ─── Cleanup ────────────────────────────────────────────────────────────────
 ## clean: Remove build artifacts and test cache
@@ -298,28 +383,61 @@ clean:
 
 .PHONY: swagger-init
 swagger-init:
-	@echo '$(CYAN)Initializing Swagger documentation...$(NC)'
+	@echo '$(COLOR_CYAN)Initializing Swagger documentation...$(COLOR_RESET)'
 	@swag init \
 		-g cmd/api/main.go \
 		-o api/docs \
 		--parseDependency \
 		--parseInternal
-	@echo '$(GREEN)✓ Swagger docs generated in api/docs/$(NC)'
+	@echo '$(COLOR_GREEN)✓ Swagger docs generated in api/docs/$(COLOR_RESET)'
 
 .PHONY: swagger-validate
 swagger-validate: ## Validate OpenAPI spec
-	@echo '$(CYAN)Validating OpenAPI specification...$(NC)'
+	@echo '$(COLOR_CYAN)Validating OpenAPI specification...$(COLOR_RESET)'
 	@docker run --rm \
 		-v $(PWD)/api/docs:/workspace \
 		openapitools/openapi-generator-cli:latest \
 		validate -i /workspace/swagger.yaml
-	@echo '$(GREEN)✓ OpenAPI spec is valid$(NC)'
+	@echo '$(COLOR_GREEN)✓ OpenAPI spec is valid$(COLOR_RESET)'
 
 .PHONY: swagger-serve
 swagger-serve: swagger-init ## Generate docs and start server with Swagger UI
-	@echo '$(CYAN)Starting server with Swagger UI...$(NC)'
-	@echo '$(YELLOW)Swagger UI available at: $(GREEN)http://localhost:8080/swagger$(NC)'
+	@echo '$(COLOR_CYAN)Starting server with Swagger UI...$(COLOR_RESET)'
+	@echo '$(COLOR_YELLOW)Swagger UI available at: $(COLOR_GREEN)http://localhost:8080/swagger$(COLOR_RESET)'
 	@$(MAKE) run
 
 .PHONY: docs
 docs: swagger-init ## Alias for swagger-init
+
+# ==================================================================================== #
+# CI/CD COMMANDS
+# ==================================================================================== #
+
+.PHONY: ci-local
+ci-local: format vet lint test build ## Run full CI pipeline locally
+	@echo '$(COLOR_GREEN)✓ Local CI pipeline passed!$(COLOR_RESET)'
+
+.PHONY: pre-commit
+pre-commit: format vet lint test ## Run pre-commit checks (fast)
+	@echo '$(COLOR_GREEN)✓ Pre-commit checks passed!$(COLOR_RESET)'
+
+.PHONY: check-secrets
+check-secrets: ## Check for accidentally committed secrets
+	@echo '$(COLOR_CYAN)Scanning for secrets...$(COLOR_RESET)'
+	@docker run --rm -v $(PWD):/repo \
+		trufflesecurity/trufflehog:latest \
+		filesystem /repo --only-verified 2>&1 || true
+	@echo '$(COLOR_GREEN)✓ Secret scan complete$(COLOR_RESET)'
+
+.PHONY: security-scan
+security-scan: ## Run gosec security scanner
+	@echo '$(COLOR_CYAN)Running security scan...$(COLOR_RESET)'
+	@gosec -severity medium -confidence medium ./... 2>&1 || true
+	@echo '$(COLOR_GREEN)✓ Security scan complete$(COLOR_RESET)'
+
+.PHONY: coverage-report
+coverage-report: ## Generate and open coverage report
+	@echo '$(COLOR_CYAN)Generating coverage report...$(COLOR_RESET)'
+	@go test -race -coverprofile=coverage.out ./...
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo '$(COLOR_GREEN)✓ Coverage report: coverage.html$(COLOR_RESET)'
