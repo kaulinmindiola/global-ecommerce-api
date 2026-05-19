@@ -1,0 +1,93 @@
+# ==============================================================================
+# .dockerignore - Global E-commerce API
+# Purpose: Exclude unnecessary files from Docker build context
+# Impact: Faster builds, smaller context, no sensitive data leaked
+# ==============================================================================
+
+# === GIT ===
+.git/
+.gitignore
+.github/
+
+# === DOCUMENTATION ===
+*.md
+docs/
+api/docs/
+*.pdf
+
+# === IDE & EDITORS ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*.vim
+.editorconfig
+
+# === OS FILES ===
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log
+
+# === GO BUILD ARTIFACTS ===
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.txt
+coverage.html
+coverage.out
+
+# === TESTS ===
+tests/
+*_test.go
+testdata/
+fixtures/
+
+# === LOCAL ENVIRONMENT ===
+.env
+.env.local
+.env.*.local
+*.local
+
+# === DOCKER (don't copy docker files into themselves) ===
+docker-compose*.yaml
+deployments/
+
+# === CI/CD ===
+.github/
+
+# === DEVELOPMENT TOOLS ===
+.golangci.yml
+Makefile
+scripts/
+
+# === VENDOR (use go modules) ===
+vendor/
+
+# === TEMPORARY FILES ===
+tmp/
+temp/
+*.tmp
+
+# === SECRETS (NEVER in image) ===
+*.pem
+*.key
+*.cert
+*.p12
+secrets/
+credentials/
+
+# === LOGS ===
+logs/
+*.log
+
+# === DATABASE (local data) ===
+*.db
+*.sqlite
+pgdata/
