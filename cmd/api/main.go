@@ -22,6 +22,8 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -47,7 +49,16 @@ var (
 	commitHash = "unknown"
 )
 
+//nolint:funlen // Initialization function requires sequential wiring
 func main() {
+	// ── Step 0.1: Handle CLI flags (Para el Dockerfile build check) ──────
+	displayVersion := flag.Bool("version", false, "Print application version and exit")
+	flag.Parse()
+
+	if *displayVersion {
+		fmt.Printf("Global E-commerce API\nVersion: %s\nCommit: %s\nBuilt: %s\n", version, commitHash, buildDate)
+		os.Exit(0)
+	}
 	// ── Step 0: Bootstrap structured logger ──────────────────────────────
 	// JSON logging in production, human-readable text in development.
 	// Logger is configured before everything else so startup errors are captured.
@@ -128,7 +139,7 @@ func main() {
 	// ── Step 5: Build the HTTP router ────────────────────────────────────
 	// NewRouter wires all handlers and middleware groups.
 	// All dependencies are injected here — no globals anywhere.
-	router := handler.NewRouter(handler.RouterDeps{
+	router := handler.NewRouter(&handler.RouterDeps{
 		UserService:     userSvc,
 		AuthService:     authSvc,
 		CurrencyService: currencySvc,

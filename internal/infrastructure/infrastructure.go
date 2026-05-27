@@ -56,8 +56,7 @@ func ConnectPostgres(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.P
 			break
 		}
 
-		backoff := time.Duration(1<<uint(attempt-1)) * time.Second
-
+		backoff := time.Duration(1<<uint(attempt-1)) * time.Second //nolint:gosec // attempt is bound to small positive values
 		slog.Warn("PostgreSQL connection attempt failed, retrying",
 			"attempt", attempt,
 			"max_retries", maxRetries,

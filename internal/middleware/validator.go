@@ -41,7 +41,6 @@ func ValidateBodyWithLimit(maxBytes int64) func(http.Handler) http.Handler {
 			if r.Method == http.MethodPost ||
 				r.Method == http.MethodPut ||
 				r.Method == http.MethodPatch {
-
 				// ── Rule 1: Content-Type must be application/json ─────────
 				contentType := r.Header.Get("Content-Type")
 				if !isJSONContentType(contentType) {

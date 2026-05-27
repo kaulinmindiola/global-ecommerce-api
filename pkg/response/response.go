@@ -130,7 +130,10 @@ type ErrorBody struct {
 //	    apperrors.FieldError{Field: "email", Message: "Invalid format", Code: "INVALID_FORMAT"},
 //	))
 func Error(w http.ResponseWriter, r *http.Request, err *apperrors.AppError) {
-	requestID, _ := r.Context().Value(contextKeyRequestID).(string)
+	requestID, ok := r.Context().Value(contextKeyRequestID).(string)
+	if !ok {
+		requestID = "unknown"
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(err.HTTPStatus)

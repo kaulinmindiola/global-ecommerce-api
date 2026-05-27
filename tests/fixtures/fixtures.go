@@ -14,12 +14,12 @@ import (
 // ── Deterministic IDs ─────────────────────────────────────────────────────────
 
 var (
-	UserID    = uuid.MustParse("u1000000-0000-4000-a000-000000000001")
-	ProductID = uuid.MustParse("p1000000-0000-4000-a000-000000000001")
-	OrderID   = uuid.MustParse("o1000000-0000-4000-a000-000000000001")
-	USDID     = uuid.MustParse("c1000000-0000-4000-a000-000000000001")
-	EURID     = uuid.MustParse("c1000000-0000-4000-a000-000000000002")
-	COPID     = uuid.MustParse("c1000000-0000-4000-a000-000000000008")
+	UserID    = uuid.MustParse("10000000-0000-4000-a000-000000000001")
+	ProductID = uuid.MustParse("20000000-0000-4000-a000-000000000001")
+	OrderID   = uuid.MustParse("30000000-0000-4000-a000-000000000001")
+	USDID     = uuid.MustParse("40000000-0000-4000-a000-000000000001")
+	EURID     = uuid.MustParse("40000000-0000-4000-a000-000000000002")
+	COPID     = uuid.MustParse("40000000-0000-4000-a000-000000000008")
 )
 
 // ── Currency fixtures ─────────────────────────────────────────────────────────

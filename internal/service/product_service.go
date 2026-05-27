@@ -125,6 +125,8 @@ func NewProductService(
 //   - BasePrice must be > 0
 //   - BaseCurrency must exist in the system
 //   - StockQuantity must be >= 0
+//
+//nolint:gocritic
 func (s *productService) Create(ctx context.Context, req CreateProductRequest) (*domain.Product, error) {
 	if err := validateCreateProduct(req); err != nil {
 		return nil, err
@@ -192,6 +194,8 @@ func (s *productService) GetByID(ctx context.Context, id uuid.UUID, targetCurren
 
 // List retrieves a paginated catalogue with converted prices.
 // Cache key: "products:list:{page}:{pageSize}:{currency}:{search}:{inStock}"
+//
+//nolint:gocritic
 func (s *productService) List(ctx context.Context, params ListProductsParams) (*ProductListResponse, error) {
 	if params.DisplayCurrency == "" {
 		params.DisplayCurrency = "USD"

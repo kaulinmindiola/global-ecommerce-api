@@ -35,7 +35,7 @@ type RouterDeps struct {
 }
 
 // NewRouter builds and returns the fully configured Chi router.
-func NewRouter(deps RouterDeps) http.Handler {
+func NewRouter(deps *RouterDeps) http.Handler {
 	r := chi.NewRouter()
 
 	// ── Global middleware stack ──────────────────────────────────────────
@@ -77,7 +77,6 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 	// ── API v1 prefix ────────────────────────────────────────────────────
 	r.Route("/api/v1", func(r chi.Router) {
-
 		// ── Observability (public, no auth) ──────────────────────────────
 		r.Get("/health", healthHandler.Health)
 		r.Get("/version", healthHandler.Version)

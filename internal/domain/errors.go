@@ -37,4 +37,6 @@ var (
 	// ErrInvalidTransition is returned when an order status change violates the state machine.
 	// Maps to HTTP 422 Unprocessable Entity.
 	ErrInvalidTransition = errors.New("invalid status transition")
+
+	ErrCacheMiss = errors.New("cache miss")
 )

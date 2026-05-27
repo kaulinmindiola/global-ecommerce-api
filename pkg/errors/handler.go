@@ -23,7 +23,10 @@ const contextKeyRequestID contextKey = "request_id"
 // Handlers should use response.Error() or response.ErrorFromDomain() instead of
 // calling this directly.
 func Write(w http.ResponseWriter, r *http.Request, err *AppError) {
-	requestID, _ := r.Context().Value(contextKeyRequestID).(string)
+	requestID, ok := r.Context().Value(contextKeyRequestID).(string)
+	if !ok {
+		requestID = "unknown"
+	}
 
 	envelope := errorEnvelope{
 		Error: errorBody{
