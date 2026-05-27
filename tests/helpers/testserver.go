@@ -45,7 +45,7 @@ func NewTestServer(t *testing.T) *TestServer {
 	productSvc := service.NewProductService(m.Product, m.Currency, m.Cache, currSvc)
 	orderSvc := service.NewOrderService(m.Order, m.Product, m.User, currSvc, m.Cache)
 
-	router := handler.NewRouter(handler.RouterDeps{
+	router := handler.NewRouter(&handler.RouterDeps{
 		UserService:     userSvc,
 		AuthService:     cacheSvc,
 		CurrencyService: currSvc,

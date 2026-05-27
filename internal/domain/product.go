@@ -42,7 +42,7 @@ var (
 	ErrProductPriceInvalid    = errors.New("product price must be greater than zero")
 	ErrProductCurrencyInvalid = errors.New("product base currency is invalid")
 	ErrProductStockNegative   = errors.New("product stock quantity cannot be negative")
-	//ErrInsufficientStock      = errors.New("insufficient stock")
+	// ErrInsufficientStock      = errors.New("insufficient stock")
 )
 
 //
@@ -221,5 +221,5 @@ func isValidSKU(sku string) bool {
 		}
 	}
 
-	return len(sku) > 0
+	return sku != ""
 }

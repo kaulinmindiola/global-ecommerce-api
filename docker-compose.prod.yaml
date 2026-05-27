@@ -1,0 +1,338 @@
+# ==============================================================================
+# DOCKER COMPOSE - PRODUCTION STACK
+# Global E-commerce API
+#
+# Usage:
+#   docker-compose -f docker-compose.prod.yaml up -d
+#
+# Services:
+#   - api:      Go application (production binary)
+#   - postgres: PostgreSQL 16 with persistence
+#   - redis:    Redis 7 with persistence
+#   - nginx:    Reverse proxy with SSL termination
+#
+# Security:
+#   - All services on isolated network
+#   - No ports exposed directly (only nginx)
+#   - Read-only filesystem where possible
+#   - Non-root users
+#   - Resource limits enforced
+# ==============================================================================
+
+services:
+  # ============================================================================
+  # API SERVICE - Go Application
+  # ============================================================================
+  api:
+    image: ghcr.io/kaulinmindiola/global-ecommerce-api:latest
+    container_name: ecommerce-api-prod
+    restart: unless-stopped
+
+    # Load environment from secrets file (never hardcode in compose)
+    env_file:
+      - .env.production
+
+    environment:
+      APP_ENV: production
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8080
+      LOG_FORMAT: json
+      LOG_LEVEL: info
+      TZ: UTC
+      # Database
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_SSLMODE: require
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+    # Health check mirrors Dockerfile HEALTHCHECK
+    healthcheck:
+      test: ["/app/ecommerce-api", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    # Resource limits (prevent runaway processes)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+
+    # Writable directories needed at runtime
+    tmpfs:
+      - /tmp:size=50m,noexec,nosuid
+
+    # Only accessible via nginx (no direct port exposure)
+    expose:
+      - "8080"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    networks:
+      - ecommerce-internal
+      - ecommerce-frontend
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        labels: "service=api"
+
+  # ============================================================================
+  # POSTGRES SERVICE - Production Database
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecommerce-postgres-prod
+    restart: unless-stopped
+
+    env_file:
+      - .env.production
+
+    environment:
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8 --auth-host=scram-sha-256"
+      TZ: UTC
+      PGDATA: /var/lib/postgresql/data/pgdata
+
+    # Production PostgreSQL tuning
+    command: >
+      postgres
+      -c max_connections=100
+      -c shared_buffers=256MB
+      -c effective_cache_size=768MB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=2621kB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+      -c log_min_duration_statement=1000
+      -c log_connections=on
+      -c log_disconnections=on
+      -c ssl=on
+      -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+      -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data/pgdata
+      - postgres_prod_logs:/var/log/postgresql
+      # SSL certificates (generate in production)
+      # - ./deployments/ssl/server.crt:/etc/ssl/certs/ssl-cert-snakeoil.pem:ro
+      # - ./deployments/ssl/server.key:/etc/ssl/private/ssl-cert-snakeoil.key:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+    security_opt:
+      - no-new-privileges:true
+
+    # Only accessible from internal network
+    expose:
+      - "5432"
+
+    networks:
+      - ecommerce-internal
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "10"
+        labels: "service=postgres"
+
+  # ============================================================================
+  # REDIS SERVICE - Production Cache
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: ecommerce-redis-prod
+    restart: unless-stopped
+
+    # Production Redis configuration
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 300
+      --timeout 0
+      --tcp-backlog 511
+      --bind 0.0.0.0
+      --protected-mode yes
+      --loglevel notice
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+
+    volumes:
+      - redis_prod_data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+
+    tmpfs:
+      - /tmp:size=10m
+
+    expose:
+      - "6379"
+
+    networks:
+      - ecommerce-internal
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+        labels: "service=redis"
+
+  # ============================================================================
+  # NGINX SERVICE - Reverse Proxy & SSL Termination
+  # ============================================================================
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: ecommerce-nginx-prod
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      - ./deployments/nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./deployments/nginx/conf.d:/etc/nginx/conf.d:ro
+      # SSL certificates (Let's Encrypt in production)
+      - nginx_ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+
+    security_opt:
+      - no-new-privileges:true
+
+    depends_on:
+      api:
+        condition: service_healthy
+
+    networks:
+      - ecommerce-frontend
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        labels: "service=nginx"
+
+# ==============================================================================
+# VOLUMES - Persistent Data
+# ==============================================================================
+volumes:
+  postgres_prod_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/ecommerce/data/postgres
+
+  postgres_prod_logs:
+    driver: local
+
+  redis_prod_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/ecommerce/data/redis
+
+  nginx_ssl:
+    driver: local
+
+  nginx_logs:
+    driver: local
+
+# ==============================================================================
+# NETWORKS - Isolated Communication
+# ==============================================================================
+networks:
+  # Internal network: API ↔ DB ↔ Redis (no external access)
+  ecommerce-internal:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+  # Frontend network: Nginx ↔ API (external access through nginx only)
+  ecommerce-frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24

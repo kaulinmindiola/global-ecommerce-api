@@ -37,6 +37,7 @@ go*.linux-amd64.tar.gz
 .env.*.local
 *.local
 config.local.yaml
+.env.production
 
 # Keep example files
 !.env.example
@@ -117,7 +118,7 @@ docker-compose.override.yml
 .github/workflows/*.local.yml
 
 # === DOCUMENTATION (generated) ===
-api/docs/*
+api/docs/docs.go
 !api/docs/.gitkeep
 
 # === TEST ARTIFACTS ===
@@ -136,3 +137,19 @@ credentials/
 # === PROJECT SPECIFIC ===
 # Add any custom patterns here
 .air.toml.local
+
+# Additional Go cache / modules
+.go/
+pkg/mod/
+go/pkg/
+
+# Additional coverage output
+coverage.out
+
+# Go workspace checksum
+go.work.sum
+
+# Archives
+*.zip
+
+*.tar.gz

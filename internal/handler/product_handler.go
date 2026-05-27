@@ -49,12 +49,13 @@ func NewProductHandler(productService service.ProductService) *ProductHandler {
 func (h *ProductHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	page, _ := strconv.Atoi(q.Get("page"))
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	if page <= 0 {
+	page, err := strconv.Atoi(q.Get("page"))
+	if err != nil || page <= 0 {
 		page = 1
 	}
-	if limit <= 0 || limit > 100 {
+
+	limit, err := strconv.Atoi(q.Get("limit"))
+	if err != nil || limit <= 0 || limit > 100 {
 		limit = 20
 	}
 
@@ -80,7 +81,7 @@ func (h *ProductHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 
 	// Optional price range filters.
 	if minStr := q.Get("min_price"); minStr != "" {
-		if val, err := strconv.ParseFloat(minStr, 64); err == nil {
+		if val, parseErr := strconv.ParseFloat(minStr, 64); parseErr == nil {
 			params.MinPrice = &val
 		}
 	}
@@ -276,4 +277,4 @@ func (h *ProductHandler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
 // ─────────────────────────────────────────────
 
 // parseUUIDParam extracts and parses a chi URL parameter as a UUID.
-// Note: Implementation omitted here to preserve your existing code structure.
+// notice: Implementation omitted here to preserve your existing code structure.

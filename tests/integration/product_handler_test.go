@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kaulinmindiola/global-ecommerce-api/internal/domain"
+	"github.com/kaulinmindiola/global-ecommerce-api/internal/repository"
 	"github.com/kaulinmindiola/global-ecommerce-api/tests/fixtures"
 	"github.com/kaulinmindiola/global-ecommerce-api/tests/helpers"
 )
@@ -16,9 +17,11 @@ import (
 func TestListProducts_Public_Returns200(t *testing.T) {
 	srv := helpers.NewTestServer(t)
 
-	srv.Mocks.Product.ListFn = func(_ context.Context, _ interface{}) ([]*domain.Product, int64, error) {
+	// CAMBIO AQUÍ: Cambia interface{} por repository.ProductListParams
+	srv.Mocks.Product.ListFn = func(_ context.Context, _ repository.ProductListParams) ([]*domain.Product, int64, error) {
 		return []*domain.Product{fixtures.Product()}, 1, nil
 	}
+
 	srv.Mocks.Currency.GetByCodeFn = func(_ context.Context, _ string) (*domain.Currency, error) {
 		return fixtures.USD(), nil
 	}

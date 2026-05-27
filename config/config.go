@@ -9,6 +9,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -73,7 +74,7 @@ type DBPoolConfig struct {
 }
 
 // DSN builds the PostgreSQL connection string.
-func (d DatabaseConfig) DSN() string {
+func (d *DatabaseConfig) DSN() string {
 	return fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
 		d.User, d.Password, d.Host, d.Port, d.DBName, d.SSLMode,
@@ -101,7 +102,7 @@ type RedisPoolConfig struct {
 }
 
 // Addr returns the Redis address in host:port format.
-func (r RedisConfig) Addr() string {
+func (r *RedisConfig) Addr() string {
 	return fmt.Sprintf("%s:%s", r.Host, r.Port)
 }
 
@@ -151,9 +152,14 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("loading config.yaml defaults: %w", err)
 	}
 
-	_ = godotenv.Load()
+	_ = godotenv.Load() //nolint:errcheck // .env is optional in production
 
 	applyEnvOverrides(cfg)
+	slog.Info("config loaded",
+		"db_max_conns", cfg.Database.Pool.MaxConns,
+		"db_min_conns", cfg.Database.Pool.MinConns,
+		"db_max_lifetime", cfg.Database.Pool.MaxConnLifetime,
+	)
 	applyBuildMetadata(cfg)
 
 	if err := validate(cfg); err != nil {
@@ -249,6 +255,17 @@ func validate(cfg *Config) error {
 	}
 	if cfg.Database.DBName == "" {
 		missing = append(missing, "DATABASE_NAME")
+	}
+	if cfg.Database.Pool.MaxConns < 1 {
+		return fmt.Errorf("DATABASE_MAX_CONNS must be >= 1")
+	}
+
+	if cfg.Database.Pool.MinConns < 0 {
+		return fmt.Errorf("DATABASE_MIN_CONNS must be >= 0")
+	}
+
+	if cfg.Database.Pool.MinConns > cfg.Database.Pool.MaxConns {
+		return fmt.Errorf("DATABASE_MIN_CONNS cannot exceed DATABASE_MAX_CONNS")
 	}
 	if cfg.JWT.SecretKey == "" {
 		missing = append(missing, "JWT_SECRET")
