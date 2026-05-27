@@ -32,7 +32,7 @@ COLOR_BLUE   := \033[34m
 COLOR_CYAN   := \033[36m
 
 # Files
-GO_FILES      := $(shell find . -type f -name '*.go' -not -path "./vendor/*")
+GO_FILES := $(shell find . -type f -name '*.go' -not -path "./vendor/*" -not -path "./.go/*")
 COVERAGE_FILE := coverage.out
 COVERAGE_HTML := coverage.html
 

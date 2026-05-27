@@ -14,7 +14,7 @@
 # Purpose: Cache dependencies separately to speed up rebuilds
 # When dependencies don't change, this layer is reused from cache
 # ==============================================================================
-ARG GO_VERSION=1.25.10
+ARG GO_VERSION=1.26.3
 FROM golang:${GO_VERSION}-alpine AS deps
 
 # Install git (required for some go modules)
