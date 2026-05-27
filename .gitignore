@@ -151,3 +151,5 @@ go.work.sum
 
 # Archives
 *.zip
+
+*.tar.gz
