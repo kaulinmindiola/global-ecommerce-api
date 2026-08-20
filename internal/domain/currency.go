@@ -64,7 +64,7 @@ func NewCurrency(
 
 	currency := &Currency{
 		ID:                uuid.New(),
-		Code:              strings.ToUpper(strings.TrimSpace(code)),
+		Code:              strings.TrimSpace(code),
 		Name:              strings.TrimSpace(name),
 		Symbol:            strings.TrimSpace(symbol),
 		DecimalPlaces:     decimalPlaces,
@@ -182,8 +182,8 @@ func NewExchangeRate(
 
 	exchangeRate := &ExchangeRate{
 		ID:            uuid.New(),
-		FromCurrency:  strings.ToUpper(strings.TrimSpace(fromCurrency)),
-		ToCurrency:    strings.ToUpper(strings.TrimSpace(toCurrency)),
+		FromCurrency:  strings.TrimSpace(fromCurrency),
+		ToCurrency:    strings.TrimSpace(toCurrency),
 		Rate:          rate,
 		EffectiveDate: now,
 		Source:        strings.TrimSpace(source),

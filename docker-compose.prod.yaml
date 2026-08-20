@@ -3,19 +3,19 @@
 # Global E-commerce API
 #
 # Usage:
-#   docker-compose -f docker-compose.prod.yaml up -d
+#   export IMAGE_TAG=$(git rev-parse --short HEAD)
+#   docker compose -f docker-compose.prod.yaml up -d
 #
-# Services:
-#   - api:      Go application (production binary)
-#   - postgres: PostgreSQL 16 with persistence
-#   - redis:    Redis 7 with persistence
-#   - nginx:    Reverse proxy with SSL termination
+# SSL/TLS Strategy:
+#   TLS is handled at the edge (Railway / Load Balancer), NOT in this stack.
+#   Nginx operates in HTTP proxy mode on port 80.
+#   For VPS self-hosted with TLS, use:
+#     docker compose -f docker-compose.prod.yaml -f docker-compose.prod.ssl.yaml up -d
 #
 # Security:
-#   - All services on isolated network
-#   - No ports exposed directly (only nginx)
-#   - Read-only filesystem where possible
-#   - Non-root users
+#   - All services on isolated internal network
+#   - Only nginx exposed externally (port 80)
+#   - No secrets in this file (use .env.production)
 #   - Resource limits enforced
 # ==============================================================================
 
@@ -24,45 +24,39 @@ services:
   # API SERVICE - Go Application
   # ============================================================================
   api:
-    image: ghcr.io/kaulinmindiola/global-ecommerce-api:latest
-    container_name: ecommerce-api-prod
+    image: "ghcr.io/kaulinmindiola/global-ecommerce-api:${IMAGE_TAG:?Error - IMAGE_TAG is required. Run: export IMAGE_TAG=$(git rev-parse --short HEAD)}"
     restart: unless-stopped
 
-    # Load environment from secrets file (never hardcode in compose)
     env_file:
       - .env.production
 
     environment:
       APP_ENV: production
       APP_HOST: 0.0.0.0
-      APP_PORT: 8080
+      APP_PORT: "8080"
       LOG_FORMAT: json
       LOG_LEVEL: info
       TZ: UTC
-      # Database
       POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_SSLMODE: require
-      # Redis
+      POSTGRES_PORT: "5432"
+      POSTGRES_SSLMODE: disable # SSL handled at Railway edge, not DB layer locally
       REDIS_HOST: redis
-      REDIS_PORT: 6379
+      REDIS_PORT: "6379"
 
-    # Health check mirrors Dockerfile HEALTHCHECK
     healthcheck:
-      test: ["/app/ecommerce-api", "healthcheck"]
+      test: ["CMD", "/app/ecommerce-api", "healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 15s
 
-    # Resource limits (prevent runaway processes)
     deploy:
       resources:
         limits:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 512M
         reservations:
-          cpus: '0.25'
+          cpus: "0.25"
           memory: 128M
       restart_policy:
         condition: on-failure
@@ -70,16 +64,12 @@ services:
         max_attempts: 3
         window: 120s
 
-    # Security hardening
     security_opt:
       - no-new-privileges:true
     read_only: true
-
-    # Writable directories needed at runtime
     tmpfs:
       - /tmp:size=50m,noexec,nosuid
 
-    # Only accessible via nginx (no direct port exposure)
     expose:
       - "8080"
 
@@ -91,7 +81,6 @@ services:
 
     networks:
       - ecommerce-internal
-      - ecommerce-frontend
 
     logging:
       driver: "json-file"
@@ -101,11 +90,66 @@ services:
         labels: "service=api"
 
   # ============================================================================
-  # POSTGRES SERVICE - Production Database
+  # NGINX - Reverse Proxy (HTTP mode, TLS terminated at Railway edge)
+  # ============================================================================
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: ecommerce-nginx-prod
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+      # Port 443 intentionally absent.
+      # Railway's edge proxy handles TLS and routes to this port 80.
+      # For VPS with self-managed TLS, add docker-compose.prod.ssl.yaml overlay.
+
+    volumes:
+      - ${PWD}/deployments/nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx_logs:/var/log/nginx
+
+    healthcheck:
+      # Two-stage check:
+      # 1. nginx -t validates config syntax
+      # 2. wget verifies the proxy is actually routing traffic to the API
+      test:
+        [
+          "CMD-SHELL",
+          "nginx -t && wget --quiet --tries=1 --spider http://127.0.0.1/api/v1/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+
+    security_opt:
+      - no-new-privileges:true
+
+    depends_on:
+      api:
+        condition: service_healthy
+
+    networks:
+      - ecommerce-internal
+      - ecommerce-frontend
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        labels: "service=nginx"
+
+  # ============================================================================
+  # POSTGRES SERVICE
   # ============================================================================
   postgres:
     image: postgres:16-alpine
-    container_name: ecommerce-postgres-prod
     restart: unless-stopped
 
     env_file:
@@ -116,7 +160,6 @@ services:
       TZ: UTC
       PGDATA: /var/lib/postgresql/data/pgdata
 
-    # Production PostgreSQL tuning
     command: >
       postgres
       -c max_connections=100
@@ -134,16 +177,10 @@ services:
       -c log_min_duration_statement=1000
       -c log_connections=on
       -c log_disconnections=on
-      -c ssl=on
-      -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
-      -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
 
     volumes:
       - postgres_prod_data:/var/lib/postgresql/data/pgdata
       - postgres_prod_logs:/var/log/postgresql
-      # SSL certificates (generate in production)
-      # - ./deployments/ssl/server.crt:/etc/ssl/certs/ssl-cert-snakeoil.pem:ro
-      # - ./deployments/ssl/server.key:/etc/ssl/private/ssl-cert-snakeoil.key:ro
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -155,16 +192,15 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
+          cpus: "2.0"
           memory: 1G
         reservations:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 256M
 
     security_opt:
       - no-new-privileges:true
 
-    # Only accessible from internal network
     expose:
       - "5432"
 
@@ -179,25 +215,23 @@ services:
         labels: "service=postgres"
 
   # ============================================================================
-  # REDIS SERVICE - Production Cache
+  # REDIS SERVICE
   # ============================================================================
   redis:
     image: redis:7-alpine
-    container_name: ecommerce-redis-prod
     restart: unless-stopped
 
-    # Production Redis configuration
+    env_file:
+      - .env.production
+
     command: >
       redis-server
+      --requirepass ${REDIS_PASSWORD:?Error - REDIS_PASSWORD is required in .env.production}
       --appendonly yes
       --appendfsync everysec
-      --requirepass ${REDIS_PASSWORD}
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
       --tcp-keepalive 300
-      --timeout 0
-      --tcp-backlog 511
-      --bind 0.0.0.0
       --protected-mode yes
       --loglevel notice
       --save 900 1
@@ -217,18 +251,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 256M
         reservations:
-          cpus: '0.1'
+          cpus: "0.1"
           memory: 64M
 
     security_opt:
       - no-new-privileges:true
-    read_only: true
-
-    tmpfs:
-      - /tmp:size=10m
 
     expose:
       - "6379"
@@ -243,86 +273,24 @@ services:
         max-file: "3"
         labels: "service=redis"
 
-  # ============================================================================
-  # NGINX SERVICE - Reverse Proxy & SSL Termination
-  # ============================================================================
-  nginx:
-    image: nginx:1.25-alpine
-    container_name: ecommerce-nginx-prod
-    restart: unless-stopped
-
-    ports:
-      - "80:80"
-      - "443:443"
-
-    volumes:
-      - ./deployments/nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
-      - ./deployments/nginx/conf.d:/etc/nginx/conf.d:ro
-      # SSL certificates (Let's Encrypt in production)
-      - nginx_ssl:/etc/nginx/ssl:ro
-      - nginx_logs:/var/log/nginx
-
-    healthcheck:
-      test: ["CMD", "nginx", "-t"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 128M
-
-    security_opt:
-      - no-new-privileges:true
-
-    depends_on:
-      api:
-        condition: service_healthy
-
-    networks:
-      - ecommerce-frontend
-
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-        labels: "service=nginx"
-
 # ==============================================================================
-# VOLUMES - Persistent Data
+# VOLUMES
 # ==============================================================================
 volumes:
   postgres_prod_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /opt/ecommerce/data/postgres
-
   postgres_prod_logs:
-    driver: local
-
   redis_prod_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /opt/ecommerce/data/redis
-
-  nginx_ssl:
-    driver: local
-
   nginx_logs:
-    driver: local
+  # nginx_ssl intentionally removed.
+  # SSL/TLS is NOT managed in this stack.
+  # See docker-compose.prod.ssl.yaml for VPS/self-hosted TLS overlay.
 
 # ==============================================================================
-# NETWORKS - Isolated Communication
+# NETWORKS
 # ==============================================================================
 networks:
-  # Internal network: API ↔ DB ↔ Redis (no external access)
+  # Internal network: api, postgres, redis, nginx communicate here
+  # Marked internal=true: containers on this network cannot reach the internet
   ecommerce-internal:
     driver: bridge
     internal: true
@@ -330,7 +298,7 @@ networks:
       config:
         - subnet: 172.20.0.0/24
 
-  # Frontend network: Nginx ↔ API (external access through nginx only)
+  # Frontend network: only nginx is here, facing the outside world
   ecommerce-frontend:
     driver: bridge
     ipam:

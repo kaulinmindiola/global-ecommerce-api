@@ -290,7 +290,7 @@ PROD_COMPOSE = docker compose -f docker-compose.prod.yaml
 TEST_COMPOSE = docker compose -f docker-compose.test.yaml
 IMAGE_NAME   := global-ecommerce-api
 IMAGE_REPO   := ghcr.io/kaulinmindiola/$(IMAGE_NAME)
-IMAGE_TAG    := $(shell git describe --tags --always --dirty)
+IMAGE_TAG    := $(shell git rev-parse --short HEAD)
 
 .PHONY: docker-build-prod
 docker-build-prod: ## Build production Docker image
@@ -312,9 +312,9 @@ docker-build-scan: ## Build production image and run security scan
 	@echo '$(COLOR_GREEN)✓ Build and scan complete$(COLOR_RESET)'
 
 .PHONY: docker-prod-up
-docker-prod-up: ## Start production stack
+docker-prod-up: ## Start production stack with auto-injected tag
 	@echo '$(COLOR_CYAN)Starting production stack...$(COLOR_RESET)'
-	@$(PROD_COMPOSE) up -d
+	IMAGE_TAG=$(IMAGE_TAG) $(PROD_COMPOSE) up -d
 	@echo '$(COLOR_GREEN)✓ Production stack started$(COLOR_RESET)'
 	@echo '$(COLOR_YELLOW)  • API:    http://localhost:80$(COLOR_RESET)'
 	@echo '$(COLOR_YELLOW)  • HTTPS:  https://localhost:443$(COLOR_RESET)'

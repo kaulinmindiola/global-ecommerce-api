@@ -215,7 +215,8 @@ func (s *productService) List(ctx context.Context, params ListProductsParams) (*
 		responses = append(responses, resp)
 	}
 
-	pageSize := params.PageSize
+	// Accedemos a la ruta anidada correcta: ProductListParams -> ListParams -> PageSize
+	pageSize := params.ProductListParams.ListParams.PageSize
 	if pageSize <= 0 {
 		pageSize = 20
 	}
@@ -224,7 +225,8 @@ func (s *productService) List(ctx context.Context, params ListProductsParams) (*
 	return &ProductListResponse{
 		Data: responses,
 		Pagination: PaginationMeta{
-			Page:       params.Page,
+			// Accedemos a la ruta anidada correcta: ProductListParams -> ListParams -> Page
+			Page:       params.ProductListParams.ListParams.Page,
 			Limit:      pageSize,
 			Total:      total,
 			TotalPages: totalPages,

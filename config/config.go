@@ -155,6 +155,7 @@ func Load() (*Config, error) {
 	_ = godotenv.Load() //nolint:errcheck // .env is optional in production
 
 	applyEnvOverrides(cfg)
+
 	slog.Info("config loaded",
 		"db_max_conns", cfg.Database.Pool.MaxConns,
 		"db_min_conns", cfg.Database.Pool.MinConns,

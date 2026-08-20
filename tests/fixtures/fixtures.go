@@ -83,7 +83,7 @@ func User() *domain.User {
 		ID:                  UserID,
 		Email:               "kaulin@example.com",
 		FullName:            "Kaulin Mindiola",
-		PasswordHash:        "$2a$10$rQnm2.y4xK3vJ5bL6dF8eOH1mN7pS9cT0wU3vX4yZ5aB6cD7eF8gH",
+		PasswordHash:        "$2a$10$C8.11T9G4fW98XJ2x57N6.v547L1U3/n.s71f0gB0y0/w.1tH6eG2",
 		PreferredCurrencyID: COPID,
 		PreferredTimezone:   "America/Bogota",
 		IsActive:            true,

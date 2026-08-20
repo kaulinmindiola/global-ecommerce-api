@@ -61,9 +61,20 @@ func RateLimit(redisClient *redis.Client) func(http.Handler) http.Handler {
 //   - X-RateLimit-Remaining : requests remaining in current window
 //   - X-RateLimit-Reset     : Unix timestamp when the window resets
 //   - Retry-After           : seconds to wait (only on 429)
+//
+// RateLimitWithConfig returns a rate limiting middleware with custom configuration.
+// ... (comentarios originales) ...
 func RateLimitWithConfig(redisClient *redis.Client, cfg RateLimitConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// 🛡️ PROTECCIÓN SENIOR (Fail-Open):
+			// Si el cliente de Redis es nil (ej. entorno de tests o fallo de inyección),
+			// saltamos el Rate Limit y permitimos que la petición continúe.
+			if redisClient == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			ip := extractClientIP(r)
 
 			// Build the window-scoped Redis key.
@@ -76,7 +87,6 @@ func RateLimitWithConfig(redisClient *redis.Client, cfg RateLimitConfig) func(ht
 			count, err := incrementCounter(ctx, redisClient, key, cfg.Window)
 			if err != nil {
 				// If Redis is unavailable, fail open (allow the request).
-				// Failing closed would make a Redis outage take down the entire API.
 				slog.Warn("rate limiter: Redis unavailable, allowing request",
 					"error", err,
 					"ip", ip,
@@ -84,6 +94,8 @@ func RateLimitWithConfig(redisClient *redis.Client, cfg RateLimitConfig) func(ht
 				next.ServeHTTP(w, r)
 				return
 			}
+
+			// ... [EL RESTO DE TU FUNCIÓN SE MANTIENE EXACTAMENTE IGUAL] ...
 
 			remaining := cfg.RequestsPerWindow - int(count)
 			if remaining < 0 {

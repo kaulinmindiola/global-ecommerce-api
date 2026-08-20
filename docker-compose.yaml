@@ -12,8 +12,6 @@
 #   Logs:   docker-compose logs -f
 # ============================================================================
 
-version: '3.9'
-
 services:
   # ==========================================================================
   # PostgreSQL - Primary Database
@@ -38,7 +36,6 @@ services:
       # Auto-execute schema on FIRST startup ONLY (not on restarts)
       # NOTE: This only runs when the container is created for the first time
       # If you need to recreate tables, use: make db-create
-
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ecommerce_user -d ecommerce_db"]

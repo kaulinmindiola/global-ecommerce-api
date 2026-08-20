@@ -127,6 +127,8 @@ COPY --from=builder /app/bin/ecommerce-api /app/ecommerce-api
 # Copy default config
 COPY --from=builder /app/config /app/config
 
+COPY --from=builder /app/api/openapi /app/api/openapi
+
 # Set working directory
 WORKDIR /app
 
@@ -165,4 +167,3 @@ LABEL org.opencontainers.image.title="Global E-commerce API" \
 
 # Run the binary
 ENTRYPOINT ["/app/ecommerce-api"]
-CMD ["serve"]

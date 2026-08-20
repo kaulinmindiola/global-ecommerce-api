@@ -11,6 +11,7 @@ import (
 	"github.com/kaulinmindiola/global-ecommerce-api/internal/domain"
 	"github.com/kaulinmindiola/global-ecommerce-api/tests/fixtures"
 	"github.com/kaulinmindiola/global-ecommerce-api/tests/helpers"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestRegister_Success_Returns201(t *testing.T) {
@@ -113,9 +114,21 @@ func TestRegister_MissingContentType_Returns415(t *testing.T) {
 func TestLogin_ValidCredentials_Returns200(t *testing.T) {
 	srv := helpers.NewTestServer(t)
 
+	// 1. Hasheamos la contraseña de prueba en tiempo real
+	password := "SecurePass123!"
+	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("failed to hash password for test: %v", err)
+	}
+
+	// 2. Traemos el usuario base del fixture
+	mockUser := fixtures.User()
+	// 3. ¡Le inyectamos el hash que acabamos de generar!
+	mockUser.PasswordHash = string(hashedBytes)
+
 	// Return the fixture user on email lookup.
 	srv.Mocks.User.GetByEmailFn = func(_ context.Context, _ string) (*domain.User, error) {
-		return fixtures.User(), nil
+		return mockUser, nil
 	}
 	srv.Mocks.Currency.GetByIDFn = func(_ context.Context, _ uuid.UUID) (*domain.Currency, error) {
 		return fixtures.COP(), nil
@@ -123,7 +136,7 @@ func TestLogin_ValidCredentials_Returns200(t *testing.T) {
 
 	body := map[string]any{
 		"email":    "kaulin@example.com",
-		"password": "SecurePass123!",
+		"password": password, // Mandamos la misma contraseña cruda
 	}
 
 	resp := srv.POST("/api/v1/auth/login", body)
@@ -146,7 +159,6 @@ func TestLogin_ValidCredentials_Returns200(t *testing.T) {
 		t.Errorf("token_type: got %s, want Bearer", respBody.Token.TokenType)
 	}
 }
-
 func TestLogin_WrongPassword_Returns401(t *testing.T) {
 	srv := helpers.NewTestServer(t)
 

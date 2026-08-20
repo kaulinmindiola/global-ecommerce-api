@@ -69,7 +69,7 @@ func NewProduct(
 		ID:             uuid.New(),
 		Name:           strings.TrimSpace(name),
 		Description:    strings.TrimSpace(description),
-		SKU:            strings.ToUpper(strings.TrimSpace(sku)),
+		SKU:            strings.TrimSpace(sku),
 		BasePrice:      basePrice,
 		BaseCurrencyID: baseCurrencyID,
 		StockQuantity:  stockQuantity,

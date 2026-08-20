@@ -65,14 +65,20 @@ func NewRouter(deps *RouterDeps) http.Handler {
 	))
 
 	// ── Swagger UI (API Documentation) ───────────────────────────────────
+
 	// Redirigir la ruta base a la interfaz HTML para mejor DX
 	r.Get("/swagger", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/swagger/index.html", http.StatusMovedPermanently)
 	})
 
-	// Servir los archivos estáticos generados por Swag apuntando explícitamente al JSON
+	// Servir el contrato OpenAPI como archivo estático
+	r.Get("/swagger/doc.yaml", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "api/openapi/openapi.yaml")
+	})
+
+	// Swagger UI consumiendo el YAML como fuente única de verdad
 	r.Get("/swagger/*", httpSwagger.Handler(
-		httpSwagger.URL("/swagger/doc.json"),
+		httpSwagger.URL("/swagger/doc.yaml"),
 	))
 
 	// ── API v1 prefix ────────────────────────────────────────────────────
