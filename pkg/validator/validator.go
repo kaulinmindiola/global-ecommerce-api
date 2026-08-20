@@ -194,12 +194,20 @@ func (v *Validator) ISO4217(field, value string) *Validator {
 // IANATimezone validates that a string is a valid IANA timezone identifier.
 // Uses time.LoadLocation which is authoritative for IANA validation.
 func (v *Validator) IANATimezone(field, value string) *Validator {
+	value = strings.TrimSpace(value)
+
+	if value == "" {
+		v.addError(field, "Timezone cannot be empty", "TIMEZONE_EMPTY")
+		return v
+	}
+
 	if _, err := time.LoadLocation(value); err != nil {
 		v.addError(field,
 			"Must be a valid IANA timezone (e.g. America/Bogota, Europe/Madrid)",
 			"INVALID_TIMEZONE",
 		)
 	}
+
 	return v
 }
 
