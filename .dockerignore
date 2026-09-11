@@ -1,0 +1,73 @@
+# Git
+.git
+.gitignore
+
+# Go cache local
+.go
+.gocache
+
+# Build artifacts
+bin
+dist
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Coverage
+coverage.out
+coverage.html
+
+# IDE
+.vscode
+.idea
+
+# Logs
+logs
+*.log
+
+# Temp
+tmp
+temp
+*.tmp
+
+# Tests
+tests
+
+# Local env
+.env
+.env.local
+.env.*.local
+
+# Docs
+*.md
+docs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules
+
+# Vendor
+vendor
+
+# Secrets
+*.pem
+*.key
+*.p12
+
+# Swagger generated
+
+
+# Keep required deployment files
+!deployments/
+!deployments/nginx/
+!deployments/docker/
+
+# Keep docker scripts
+!scripts/
+!scripts/docker/
+!scripts/docker/build.sh
+!scripts/docker/healthcheck.sh

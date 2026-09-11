@@ -1,0 +1,14 @@
+<!-- .github/CODEOWNERS -->
+Global E-commerce API - Code Owners
+These owners will be automatically requested for review
+Default owner for everything
+
+@kaulinmindiola
+
+Critical paths - require explicit review
+/internal/domain/          @kaulinmindiola
+/internal/service/         @kaulinmindiola
+/database/migrations/      @kaulinmindiola
+/.github/workflows/        @kaulinmindiola
+/deployments/              @kaulinmindiola
+/api/openapi/              @kaulinmindiola

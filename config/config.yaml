@@ -1,0 +1,74 @@
+# =============================================================================
+# Global E-commerce API — Default Configuration
+# =============================================================================
+# This file defines the baseline defaults for ALL environments.
+# Values are overridden by environment variables in this priority order:
+#   1. Environment variables (highest priority — production, Docker, CI)
+#   2. .env file (development convenience)
+#   3. This config.yaml (lowest priority — safe defaults)
+#
+# NEVER store secrets in this file. Use environment variables for:
+#   DATABASE_PASSWORD, REDIS_PASSWORD, JWT_SECRET
+# =============================================================================
+
+app:
+  name: "global-ecommerce-api"
+  environment: "development"
+  version: "dev"
+  build_date: "unknown"
+  commit_hash: "unknown"
+
+server:
+  port: "8080"
+  read_timeout: "15s"
+  write_timeout: "15s"
+  idle_timeout: "60s"
+  shutdown_timeout: "30s"
+
+database:
+  host: "localhost"
+  port: 5432
+  name: "ecommerce_db"
+  user: "ecommerce_user"
+  # password: NEVER set here — use DATABASE_PASSWORD env var
+  ssl_mode: "disable"
+  pool:
+    max_conns: 25
+    min_conns: 5
+    max_conn_lifetime: "30m"
+    max_conn_idle_time: "5m"
+    health_check_period: "1m"
+
+redis:
+  host: "localhost"
+  port: "6379"
+  db: 0
+  # password: NEVER set here — use REDIS_PASSWORD env var
+  pool:
+    pool_size: 10
+    min_idle_conns: 2
+    conn_max_lifetime: "30m"
+    conn_max_idle_time: "5m"
+    dial_timeout: "5s"
+    read_timeout: "3s"
+    write_timeout: "3s"
+
+jwt:
+  access_ttl: "24h"
+  refresh_ttl: "168h"  # 7 days
+  # secret: NEVER set here — use JWT_SECRET env var
+
+logging:
+  level: "info"    # debug | info | warn | error
+  format: "json"   # json (production) | text (development)
+  add_source: false
+
+cors:
+  # Comma-separated list of allowed origins.
+  # Use "*" for development only.
+  allowed_origins: "*"
+  max_age: "86400"
+
+rate_limit:
+  requests_per_window: 100
+  window: "1m"

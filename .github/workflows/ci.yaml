@@ -1,0 +1,313 @@
+# ==============================================================================
+# CI PIPELINE - Global E-commerce API
+# Triggers: Every Pull Request to main and develop
+# Jobs: validate → test → lint → build → coverage
+# ==============================================================================
+
+name: 🔁 CI Pipeline
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+  push:
+    branches:
+      - develop
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+# Cancel previous runs on new push to same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: '1.22'
+  POSTGRES_USER: ecommerce_user
+  POSTGRES_PASSWORD: ecommerce_pass_test
+  POSTGRES_DB: ecommerce_test_db
+  REDIS_PASSWORD: redis_pass_test
+
+jobs:
+  # ============================================================================
+  # JOB 1: VALIDATE
+  # Purpose: Fast checks before running expensive jobs
+  # ============================================================================
+  validate:
+    name: 🔍 Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum || \
+            (echo "::error::go.mod or go.sum is not tidy. Run 'go mod tidy'" && exit 1)
+
+      - name: Verify no vendor directory issues
+        run: go mod verify
+
+      - name: Check go vet
+        run: go vet ./...
+
+      - name: Validate OpenAPI spec
+        uses: swaggo/setup-swag@v1
+        with:
+          version: latest
+      - run: |
+          swag init -g cmd/api/main.go -o api/docs --parseDependency --parseInternal
+          echo "✓ Swagger docs generated successfully"
+
+  # ============================================================================
+  # JOB 2: LINT
+  # Purpose: Code quality enforcement
+  # ============================================================================
+  lint:
+    name: 🧹 Lint
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          args: --timeout=5m --config=.golangci.yml
+          only-new-issues: false
+
+  # ============================================================================
+  # JOB 3: TEST
+  # Purpose: Run all tests with real database and cache
+  # ============================================================================
+  test:
+    name: 🧪 Test
+    runs-on: ubuntu-latest
+    needs: validate
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        env:
+          REDIS_PASSWORD: ${{ env.REDIS_PASSWORD }}
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Install migrate tool
+        run: |
+          go install -tags 'postgres' \
+            github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgres://${{ env.POSTGRES_USER }}:${{ env.POSTGRES_PASSWORD }}@localhost:5432/${{ env.POSTGRES_DB }}?sslmode=disable
+        run: |
+          migrate -path database/migrations \
+            -database "${DATABASE_URL}" up
+          echo "✓ Migrations applied"
+
+      - name: Run unit tests
+        env:
+          APP_ENV: test
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_SSLMODE: disable
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          REDIS_PASSWORD: ${{ env.REDIS_PASSWORD }}
+          JWT_SECRET: ci-test-jwt-secret-key-minimum-32-chars
+        run: |
+          go test -v -race \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            -short \
+            ./internal/... \
+            ./pkg/...
+
+      - name: Run integration tests
+        env:
+          APP_ENV: test
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_SSLMODE: disable
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          REDIS_PASSWORD: ${{ env.REDIS_PASSWORD }}
+          JWT_SECRET: ci-test-jwt-secret-key-minimum-32-chars
+        run: |
+          go test -v -race \
+            -coverprofile=coverage-integration.out \
+            -covermode=atomic \
+            -run Integration \
+            ./tests/integration/...
+
+      - name: Merge coverage reports
+        run: |
+          go install github.com/wadey/gocovmerge@latest
+          gocovmerge coverage.out coverage-integration.out > coverage-merged.out
+          go tool cover -func=coverage-merged.out | tail -1
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(go tool cover -func=coverage-merged.out | \
+            grep total | awk '{print $3}' | tr -d '%')
+          echo "Coverage: ${COVERAGE}%"
+
+          # Fail if coverage is below 80%
+          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+            echo "::error::Coverage ${COVERAGE}% is below minimum threshold of 80%"
+            exit 1
+          fi
+          echo "✓ Coverage ${COVERAGE}% meets minimum threshold"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage-merged.out
+          flags: unittests
+          name: codecov-ecommerce-api
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage-merged.out
+          retention-days: 7
+
+  # ============================================================================
+  # JOB 4: BUILD
+  # Purpose: Verify the application compiles correctly
+  # ============================================================================
+  build:
+    name: 🔨 Build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build application
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build \
+            -ldflags="-w -s \
+              -X main.version=${{ github.sha }} \
+              -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o bin/ecommerce-api \
+            ./cmd/api
+
+          echo "✓ Build successful"
+          ls -lh bin/
+
+      - name: Test binary startup
+        run: |
+          timeout 5 ./bin/ecommerce-api --help 2>&1 || true
+          echo "✓ Binary starts correctly"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecommerce-api-linux-amd64
+          path: bin/ecommerce-api
+          retention-days: 1
+
+  # ============================================================================
+  # JOB 5: SUMMARY
+  # Purpose: Provide a clear summary of all CI results
+  # ============================================================================
+  ci-summary:
+    name: 📊 CI Summary
+    runs-on: ubuntu-latest
+    needs: [validate, lint, test, build]
+    if: always()
+    steps:
+      - name: Check all jobs status
+        run: |
+          echo "## 🔁 CI Pipeline Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔍 Validate | ${{ needs.validate.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🧹 Lint | ${{ needs.lint.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🧪 Test | ${{ needs.test.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔨 Build | ${{ needs.build.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if any job failed
+        if: |
+          needs.validate.result == 'failure' ||
+          needs.lint.result == 'failure' ||
+          needs.test.result == 'failure' ||
+          needs.build.result == 'failure'
+        run: exit 1

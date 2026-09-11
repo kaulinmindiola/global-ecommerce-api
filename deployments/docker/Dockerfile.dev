@@ -1,0 +1,51 @@
+# ==============================================================================
+# DOCKERFILE.DEV - Global E-commerce API
+# Purpose: Development image with hot reload via Air
+# Features:
+#   - Hot reload on file changes (Air)
+#   - All dev tools included
+#   - Volume mounts for live code editing
+#   - Debugger support (Delve)
+# ==============================================================================
+
+FROM golang:1.22-alpine
+
+# Install development dependencies
+RUN apk add --no-cache \
+    git \
+    make \
+    curl \
+    bash \
+    ca-certificates \
+    tzdata \
+    # For debugging
+    gcc \
+    musl-dev
+
+WORKDIR /app
+
+# Install Air (hot reload)
+RUN go install github.com/air-verse/air@latest
+
+# Install Delve (debugger)
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
+# Install development tools
+RUN go install github.com/swaggo/swag/cmd/swag@latest && \
+    go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest && \
+    go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+# Copy dependency files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy Air configuration
+COPY .air.toml ./
+
+# Expose ports:
+# 8080: API server
+# 2345: Delve debugger
+EXPOSE 8080 2345
+
+# Start with Air for hot reload
+CMD ["air", "-c", ".air.toml"]
